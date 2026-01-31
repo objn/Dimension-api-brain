@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-pgvector
-psycopg2-binary
-python-jose[cryptography]
-python-multipart
-python-dotenv
