@@ -1,0 +1,48 @@
+from fastapi import FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.controllers import agent_router
+from src.config import settings
+
+
+def create_app() -> FastAPI:
+    """Application factory"""
+
+    app = FastAPI(
+        title="Dimension API Brain",
+        description="LLM Service API with MVC Architecture",
+        version="1.0.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        root_path="/llm"
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure appropriately for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Include routers
+    app.include_router(agent_router)
+
+    # Root endpoint
+    @app.get("/", status_code=status.HTTP_200_OK)
+    async def root():
+        return {
+            "name": "Dimension API Brain",
+            "version": "1.0.0",
+            "environment": settings.environment
+        }
+
+    @app.get("/health", status_code=status.HTTP_200_OK)
+    async def health():
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()
