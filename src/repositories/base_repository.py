@@ -2,14 +2,12 @@
 Base repository class (like TypeORM Repository).
 Provides common CRUD operations for all entities.
 """
-from typing import Generic, TypeVar, Type, List, Optional
+from typing import Generic, TypeVar, Type, List, Optional, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete
 from uuid import UUID
 
-from src.database import Base
-
-T = TypeVar('T', bound=Base)
+T = TypeVar('T')
 
 
 class BaseRepository(Generic[T]):
