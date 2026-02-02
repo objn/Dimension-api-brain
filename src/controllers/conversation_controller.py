@@ -25,7 +25,7 @@ from src.dto.conversation_dto import (
 from src.dto.response_dto import success_response, error_response
 from src.utils.auth import get_current_user_id
 
-import src.services.openai_api as LLM
+import src.services.llm_router as LLM
 
 router = APIRouter(
     prefix="/conversations",
@@ -115,7 +115,7 @@ async def create_conversation(
 ):
     """Create a new conversation - uses ORM query"""
     try:
-        resinput = LLM.OpenAIService().topic_by_firstmessage(request.message)
+        resinput = LLM.topic_by_firstmessage(request.message_content, request.llm_provider)
         # Ensure topic is properly encoded string
         topic = str(resinput) if resinput else "New Conversation"
         repo = ConversationRepository(db)
@@ -248,7 +248,7 @@ async def add_message_to_conversation(
         created_message = message_repo.create(new_message)
         result = MessageResponse.model_validate(created_message)
 
-        
+
         return success_response(result.model_dump())
     except HTTPException:
         raise
