@@ -10,6 +10,19 @@ from .base_repository import BaseRepository
 from src.database.models import Conversations, Messages
 
 
+class MessageRepository(BaseRepository[Messages]):
+    """
+    Message repository with custom methods.
+    """
+
+    def __init__(self, db: Session):
+        super().__init__(Messages, db)
+
+    def find_by_conversation(self, conversation_id: UUID) -> List[Messages]:
+        """Find all messages for a specific conversation"""
+        return self.find_by(conversation_id=conversation_id)
+
+
 class ConversationRepository(BaseRepository[Conversations]):
     """
     Conversation repository with custom methods.
@@ -18,6 +31,10 @@ class ConversationRepository(BaseRepository[Conversations]):
 
     def __init__(self, db: Session):
         super().__init__(Conversations, db)
+
+    def get_message_repository(self) -> MessageRepository:
+        """Get the message repository for this conversation"""
+        return MessageRepository(self.db)
     
     def find_by_topic(self, topic: str) -> Optional[Conversations]:
         """Find conversation by exact topic"""

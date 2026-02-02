@@ -154,17 +154,24 @@ class MessageListResponse(BaseModel):
 
 class ConversationWithMessagesResponse(BaseModel):
     """Response model for conversation with its messages"""
-    conversation: ConversationResponse
+    conversation_id: UUID
+    conversation_topic: Optional[str]
+    created_at: Optional[datetime]
+    created_by: Optional[UUID]
+    updated_at: Optional[datetime]
+    updated_by: Optional[UUID]
     messages: list[MessageResponse]
 
     class Config:
+        from_attributes = True
         json_schema_extra = {
             "example": {
-                "conversation": {
-                    "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
-                    "conversation_topic": "AI Research Discussion",
-                    "created_at": "2026-02-01T12:00:00Z"
-                },
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "conversation_topic": "AI Research Discussion",
+                "created_at": "2026-02-01T12:00:00Z",
+                "created_by": "123e4567-e89b-12d3-a456-426614174001",
+                "updated_at": "2026-02-01T12:00:00Z",
+                "updated_by": "123e4567-e89b-12d3-a456-426614174001",
                 "messages": [
                     {
                         "message_id": "123e4567-e89b-12d3-a456-426614174002",
