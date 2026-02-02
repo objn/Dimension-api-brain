@@ -3,19 +3,28 @@ DTOs for Conversation and Message operations.
 Request and response models with validation.
 """
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from uuid import UUID
 
 
+# Supported LLM providers
+LLMProviderType = Literal["openai", "gemini", "anthropic"]
+
+
 class ConversationCreateRequest(BaseModel):
     """Request body for creating a conversation"""
-    message: str = Field(..., min_length=1, max_length=255, description="Conversation topic")
-
+    message_content: str = Field(..., min_length=1, max_length=255, description="Conversation topic")
+    llm_provider: Optional[LLMProviderType] = Field(
+        default="openai",
+        description="LLM provider to use (openai, gemini, anthropic)"
+    )
+    
     class Config:
         json_schema_extra = {
             "example": {
-                "conversation_topic": "how are you today?"
+                "message": "how are you today?",
+                "llm_provider": "openai"
             }
         }
 
@@ -80,13 +89,18 @@ class MessageCreateRequest(BaseModel):
     conversation_id: UUID = Field(..., description="ID of the conversation")
     message_content: str = Field(..., min_length=1, description="Message content")
     sender_role: str = Field(..., max_length=16, description="Role of the sender (user/assistant/system)")
+    llm_provider: Optional[LLMProviderType] = Field(
+        default="openai",
+        description="LLM provider to use (openai, gemini, anthropic)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
                 "message_content": "Hello, how can I help you today?",
-                "sender_role": "assistant"
+                "sender_role": "user",
+                "llm_provider": "openai"
             }
         }
 
@@ -94,11 +108,16 @@ class MessageCreateRequest(BaseModel):
 class MessageUpdateRequest(BaseModel):
     """Request body for updating a message"""
     message_content: Optional[str] = Field(None, min_length=1, description="Message content")
+    llm_provider: Optional[LLMProviderType] = Field(
+        default=None,
+        description="LLM provider to use (openai, gemini, anthropic)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message_content": "Updated message content"
+                "message_content": "Updated message content",
+                "llm_provider": "openai"
             }
         }
 
