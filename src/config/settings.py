@@ -1,7 +1,9 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Literal, Optional
+from dotenv import load_dotenv
 
+load_dotenv()  # Load environment variables from .env file
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
