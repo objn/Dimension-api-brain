@@ -8,3 +8,7 @@ asyncpg
 psycopg2-binary
 pgvector
 python-jose[cryptography]
+python-dotenv
+langchain
+langchain-openai
+langchain-anthropic

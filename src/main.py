@@ -1,7 +1,7 @@
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.controllers import agent_router
+from src.controllers import agent_router, conversation_router
 from src.config import settings
 
 
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(agent_router)
+    app.include_router(conversation_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)

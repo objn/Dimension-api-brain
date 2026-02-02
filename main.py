@@ -1,4 +1,17 @@
 import uvicorn
+import locale
+import sys
+import os
+
+os.environ['PYTHONUTF8'] = '1'
+try:
+    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_ALL, '')
+    except:
+        pass
+
 from src.config import settings
 
 if __name__ == "__main__":

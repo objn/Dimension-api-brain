@@ -46,31 +46,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-        case_sensitive = False
-
-    def get_provider_config(self) -> dict:
-        """Get the configuration for the active LLM provider"""
-        if self.llm_provider == "openai":
-            return {
-                "api_key": self.openai_api_key,
-                "model": self.openai_model,
-                "base_url": self.openai_base_url,
-            }
-        elif self.llm_provider == "gemini":
-            return {
-                "api_key": self.gemini_api_key,
-                "model": self.gemini_model,
-                "base_url": self.gemini_base_url,
-            }
-        elif self.llm_provider == "anthropic":
-            return {
-                "api_key": self.anthropic_api_key,
-                "model": self.anthropic_model,
-                "base_url": self.anthropic_base_url,
-            }
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
-
-
+        extra = "ignore"
+        
 # Singleton instance
 settings = Settings()
