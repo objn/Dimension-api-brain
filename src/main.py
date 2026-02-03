@@ -14,7 +14,8 @@ def create_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
-        root_path="/llm"
+        root_path="/llm",
+        redirect_slashes=False
     )
 
     # CORS middleware
