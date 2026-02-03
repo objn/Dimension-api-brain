@@ -62,16 +62,19 @@ router = APIRouter(
 )
 async def get_all_conversations(
     limit: Optional[int] = None,
+    sort_by: Optional[str] = "updated_at",
+    sort_order: Optional[str] = "desc",
     db: Session = Depends(get_db)
 ):
     """Get all conversations - uses ORM query"""
     try:
         repo = ConversationRepository(db)
 
-        if limit:
-            conversations = repo.find_recent(limit=limit)
-        else:
-            conversations = repo.find_all()
+        conversations = repo.find_all_sorted(
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=limit
+        )
 
         result = ConversationListResponse(
             count=len(conversations),
@@ -92,6 +95,8 @@ async def get_all_conversations(
 )
 async def get_conversation_by_id(
     conversation_id: UUID,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "asc",
     db: Session = Depends(get_db)
 ):
     """Get conversation by ID - uses ORM query"""
@@ -105,6 +110,12 @@ async def get_conversation_by_id(
                 detail="Conversation not found"
             )
 
+        # Sort messages
+        messages = list(conversation.messages)
+        if hasattr(Messages, sort_by):
+            reverse = sort_order.lower() == "desc"
+            messages.sort(key=lambda m: getattr(m, sort_by) or datetime.min, reverse=reverse)
+
         result = ConversationWithMessagesResponse(
             conversation_id=conversation.conversation_id,
             conversation_topic=conversation.conversation_topic,
@@ -112,7 +123,7 @@ async def get_conversation_by_id(
             created_by=conversation.created_by,
             updated_at=conversation.updated_at,
             updated_by=conversation.updated_by,
-            messages=[MessageResponse.model_validate(msg) for msg in conversation.messages]
+            messages=[MessageResponse.model_validate(msg) for msg in messages]
         )
         return success_response(result.model_dump())
     except HTTPException:

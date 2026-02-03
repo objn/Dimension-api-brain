@@ -36,6 +36,23 @@ class ConversationRepository(BaseRepository[Conversations]):
         """Get the message repository for this conversation"""
         return MessageRepository(self.db)
     
+    def find_all_sorted(self, sort_by: str = "updated_at", sort_order: str = "desc", limit: Optional[int] = None) -> List[Conversations]:
+        """Find all conversations with sorting"""
+        query = self.db.query(Conversations)
+        
+        # Get the column to sort by
+        if hasattr(Conversations, sort_by):
+            column = getattr(Conversations, sort_by)
+            if sort_order.lower() == "asc":
+                query = query.order_by(column.asc())
+            else:
+                query = query.order_by(column.desc())
+        
+        if limit:
+            query = query.limit(limit)
+        
+        return query.all()
+    
     def find_by_topic(self, topic: str) -> Optional[Conversations]:
         """Find conversation by exact topic"""
         return self.db.query(Conversations).filter(
