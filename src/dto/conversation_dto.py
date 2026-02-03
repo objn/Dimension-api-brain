@@ -14,6 +14,8 @@ from datetime import datetime
 from uuid import UUID
 from enum import Enum
 
+from .base_dto import BaseResponseModel
+
 
 # Supported LLM providers
 LLMProviderType = Literal["openai", "gemini", "anthropic"]
@@ -63,7 +65,7 @@ class ConversationUpdateRequest(BaseModel):
         }
 
 
-class ConversationResponse(BaseModel):
+class ConversationResponse(BaseResponseModel):
     """Response model for conversation data"""
     conversation_id: UUID
     conversation_topic: Optional[str]
@@ -144,7 +146,7 @@ class MessageUpdateRequest(BaseModel):
         }
 
 
-class MessageResponse(BaseModel):
+class MessageResponse(BaseResponseModel):
     """Response model for message data"""
     message_id: UUID
     conversation_id: Optional[UUID]
@@ -193,7 +195,7 @@ class MessageListResponse(BaseModel):
         }
 
 
-class ConversationWithMessagesResponse(BaseModel):
+class ConversationWithMessagesResponse(BaseResponseModel):
     """Response model for conversation with its messages"""
     conversation_id: UUID
     conversation_topic: Optional[str]

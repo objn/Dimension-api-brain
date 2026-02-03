@@ -7,6 +7,8 @@ from typing import Optional
 from datetime import datetime
 from uuid import UUID
 
+from .base_dto import BaseResponseModel
+
 
 class AgentCreateRequest(BaseModel):
     """Request body for creating an agent"""
@@ -43,7 +45,7 @@ class AgentUpdateRequest(BaseModel):
         }
 
 
-class AgentResponse(BaseModel):
+class AgentResponse(BaseResponseModel):
     """Response model for agent data"""
     agent_id: UUID
     agent_name: Optional[str]
