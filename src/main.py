@@ -7,13 +7,13 @@ from src.config import settings
 
 
 class TrailingSlashMiddleware(BaseHTTPMiddleware):
-    """Middleware to normalize URLs by adding trailing slash if missing"""
+    """Middleware to normalize URLs by removing trailing slash"""
     
     async def dispatch(self, request: Request, call_next):
-        # Skip if path already ends with / or has file extension
         path = request.scope["path"]
-        if not path.endswith("/") and "." not in path.split("/")[-1]:
-            request.scope["path"] = path + "/"
+        # Remove trailing slash (except for root path "/")
+        if path != "/" and path.endswith("/"):
+            request.scope["path"] = path.rstrip("/")
         return await call_next(request)
 
 
@@ -26,7 +26,8 @@ def create_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
-        root_path="/llm"
+        root_path="/llm",
+        redirect_slashes=False
     )
 
     # CORS middleware
