@@ -1,6 +1,18 @@
 """
-Conversation CRUD controller.
-All operations use ORM - no raw SQL queries.
+Conversation CRUD controller with Chat System.
+Implements AI Agent Operating Instructions for multi-role conversations.
+
+Sender Roles:
+- SYSTEM: System notices, errors, policies, or hidden context
+- USER: Human user input  
+- AGENT: AI agent natural language responses
+- TOOL: Outputs from tools, APIs, or function calls
+
+Key Principles:
+- Messages are immutable (append-only, never edited/deleted)
+- Proper role assignment for all messages
+- Agent persona via agent_prompt
+- Context management with recent messages
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,6 +22,7 @@ from datetime import datetime
 
 from src.database import get_db
 from src.repositories.conversation_repository import ConversationRepository
+from src.repositories.agent_repository import AgentRepository
 from src.database.models import Conversations, Messages
 from src.dto.conversation_dto import (
     ConversationCreateRequest,
@@ -20,10 +33,18 @@ from src.dto.conversation_dto import (
     MessageUpdateRequest,
     MessageResponse,
     MessageListResponse,
-    ConversationWithMessagesResponse
+    ConversationWithMessagesResponse,
+    # Chat DTOs
+    ChatRequest,
+    ChatResponse,
+    ToolCallRequest,
+    SystemMessageRequest,
+    ChatHistoryResponse,
+    SenderRole
 )
 from src.dto.response_dto import success_response, error_response
 from src.utils.auth import get_current_user_id
+from src.services.chat_service import ChatService
 
 import src.services.llm_router as LLM
 
@@ -256,4 +277,243 @@ async def add_message_to_conversation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error adding message: {str(e)}"
+        )
+
+
+# ============================================================================
+# CHAT ENDPOINTS - AI Agent Operating Instructions Implementation
+# ============================================================================
+
+@router.post(
+    "/chat",
+    status_code=status.HTTP_200_OK,
+    summary="Send a chat message to an agent",
+    description="""
+    Primary endpoint for user interaction with an AI agent.
+    
+    Flow:
+    1. User sends a message
+    2. Message is stored as USER role (immutable)
+    3. Agent processes with conversation context
+    4. Agent response is stored as AGENT role (immutable)
+    5. Both messages are returned
+    
+    The agent uses its agent_prompt as system guidance for response generation.
+    """
+)
+async def chat_with_agent(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Send a user message and receive an agent response.
+    Implements AI Agent Operating Instructions for message handling.
+    """
+    try:
+        chat_service = ChatService(db)
+        
+        response = chat_service.process_user_message(
+            conversation_id=request.conversation_id,
+            user_message=request.message_content,
+            agent_id=request.agent_id,
+            user_id=current_user_id,
+            llm_provider=request.llm_provider,
+            max_history=request.max_history
+        )
+        
+        return success_response(response.model_dump())
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        # Record error as SYSTEM message
+        try:
+            chat_service = ChatService(db)
+            chat_service.record_system_message(
+                conversation_id=request.conversation_id,
+                content=f"Failed to process message: {str(e)}",
+                user_id=current_user_id,
+                is_error=True
+            )
+        except:
+            pass
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing chat: {str(e)}"
+        )
+
+
+@router.post(
+    "/chat/tool",
+    status_code=status.HTTP_201_CREATED,
+    summary="Record a tool call result",
+    description="""
+    Record the output of a tool call in the conversation.
+    
+    Per AI Agent Operating Instructions:
+    - Tool outputs are stored as TOOL role messages
+    - This provides context for subsequent agent responses
+    
+    After recording, call /chat/tool/respond to get the agent's response.
+    """
+)
+async def record_tool_call(
+    request: ToolCallRequest,
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Record a TOOL message in the conversation."""
+    try:
+        chat_service = ChatService(db)
+        
+        tool_message = chat_service.record_tool_output(
+            conversation_id=request.conversation_id,
+            tool_name=request.tool_name,
+            tool_output=request.tool_output,
+            tool_input=request.tool_input,
+            user_id=current_user_id
+        )
+        
+        result = MessageResponse.model_validate(tool_message)
+        return success_response(result.model_dump())
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error recording tool call: {str(e)}"
+        )
+
+
+@router.post(
+    "/chat/tool/respond",
+    status_code=status.HTTP_200_OK,
+    summary="Generate agent response after tool call",
+    description="""
+    Generate an AGENT response after a TOOL call has been recorded.
+    
+    Per AI Agent Operating Instructions:
+    - After tool output is stored, use this to generate the final response
+    - Agent will use tool output in context to formulate response
+    """
+)
+async def respond_after_tool(
+    conversation_id: UUID,
+    agent_id: UUID,
+    llm_provider: Optional[str] = "openai",
+    max_history: Optional[int] = 10,
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Generate AGENT response using TOOL output in context."""
+    try:
+        chat_service = ChatService(db)
+        
+        agent_message = chat_service.respond_after_tool(
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+            user_id=current_user_id,
+            llm_provider=llm_provider,
+            max_history=max_history
+        )
+        
+        result = MessageResponse.model_validate(agent_message)
+        return success_response(result.model_dump())
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating response: {str(e)}"
+        )
+
+
+@router.post(
+    "/chat/system",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a system message",
+    description="""
+    Create a SYSTEM role message in the conversation.
+    
+    Per AI Agent Operating Instructions:
+    - SYSTEM messages are for notices, errors, policies, or hidden context
+    - Set is_error=true for error messages
+    """
+)
+async def create_system_message(
+    request: SystemMessageRequest,
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Create a SYSTEM message in the conversation."""
+    try:
+        chat_service = ChatService(db)
+        
+        system_message = chat_service.record_system_message(
+            conversation_id=request.conversation_id,
+            content=request.message_content,
+            user_id=current_user_id,
+            is_error=request.is_error
+        )
+        
+        result = MessageResponse.model_validate(system_message)
+        return success_response(result.model_dump())
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating system message: {str(e)}"
+        )
+
+
+@router.get(
+    "/{conversation_id}/chat/history",
+    status_code=status.HTTP_200_OK,
+    summary="Get chat history with role statistics",
+    description="""
+    Get the full chat history with role-based message counts.
+    
+    Returns all messages in chronological order with statistics:
+    - Total message count
+    - Count per role (USER, AGENT, SYSTEM, TOOL)
+    """
+)
+async def get_chat_history(
+    conversation_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Get full chat history with role statistics."""
+    try:
+        chat_service = ChatService(db)
+        
+        history = chat_service.get_chat_history(conversation_id)
+        return success_response(history.model_dump())
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching chat history: {str(e)}"
         )

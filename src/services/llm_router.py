@@ -61,7 +61,8 @@ def chat_with_history(
     history: List[dict],
     provider: LLMProviderType = "openai",
     system_prompt: Optional[str] = None,
-    k: int = 10
+    k: int = 10,
+    topic: Optional[str] = None
 ) -> str:
     """
     Chat with conversation history.
@@ -72,6 +73,7 @@ def chat_with_history(
         provider: LLM provider to use (openai, gemini, anthropic)
         system_prompt: Optional system prompt to set the assistant's behavior
         k: Maximum number of recent messages to include from history
+        topic: Optional conversation topic to include when history has < 10 messages
     
     Returns:
         The assistant's response content
@@ -83,6 +85,10 @@ def chat_with_history(
     if system_prompt:
         messages.append(SystemMessage(content=system_prompt))
     
+    # Add topic context when history has fewer than 10 messages
+    if topic and len(history) < 10:
+        messages.append(SystemMessage(content=f"Conversation topic: {topic}"))
+    
     # Sort history by created_at and limit to k most recent messages
     sorted_history = sorted(
         history,
@@ -91,20 +97,28 @@ def chat_with_history(
     )[-k:]
     
     # Convert history to LangChain messages
+    # Role mapping per AI Agent Operating Instructions:
+    # - USER -> HumanMessage
+    # - AGENT/ASSISTANT -> AIMessage  
+    # - SYSTEM -> SystemMessage
+    # - TOOL -> SystemMessage (tool outputs as context)
     for msg in sorted_history:
         role = msg.get('sender_role', '').upper()
         content = msg.get('message_content', '')
         
         if role == 'USER':
             messages.append(HumanMessage(content=content))
-        elif role == 'ASSISTANT':
+        elif role in ('ASSISTANT', 'AGENT'):
             messages.append(AIMessage(content=content))
         elif role == 'SYSTEM':
             messages.append(SystemMessage(content=content))
+        elif role == 'TOOL':
+            # Tool outputs are added as system context
+            messages.append(SystemMessage(content=f"[Tool Output]\n{content}"))
     
     # Add current user message
     messages.append(HumanMessage(content=user_message))
-    
+
     # Invoke LLM and return response
     response = llm.invoke(messages)
     return response.content.strip()

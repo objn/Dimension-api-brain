@@ -1,15 +1,37 @@
 """
 DTOs for Conversation and Message operations.
 Request and response models with validation.
+
+Sender Roles (per AI Agent Operating Instructions):
+- SYSTEM: System notices, errors, policies, or hidden context
+- USER: Human user input
+- AGENT: AI agent natural language responses
+- TOOL: Outputs from tools, APIs, or function calls
 """
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from datetime import datetime
 from uuid import UUID
+from enum import Enum
 
 
 # Supported LLM providers
 LLMProviderType = Literal["openai", "gemini", "anthropic"]
+
+
+class SenderRole(str, Enum):
+    """
+    Message sender roles per AI Agent Operating Instructions.
+    Messages must correctly assign sender_role.
+    """
+    SYSTEM = "SYSTEM"   # System notices, errors, policies, hidden context
+    USER = "USER"       # Human user input
+    AGENT = "AGENT"     # AI agent natural language responses  
+    TOOL = "TOOL"       # Outputs from tools, APIs, or function calls
+
+
+# Type alias for role literals
+SenderRoleType = Literal["SYSTEM", "USER", "AGENT", "TOOL"]
 
 
 class ConversationCreateRequest(BaseModel):
@@ -85,10 +107,10 @@ class ConversationListResponse(BaseModel):
 
 
 class MessageCreateRequest(BaseModel):
-    """Request body for creating a message"""
+    """Request body for creating a message (internal use - messages are immutable)"""
     conversation_id: UUID = Field(..., description="ID of the conversation")
     message_content: str = Field(..., min_length=1, description="Message content")
-    sender_role: str = Field(..., max_length=16, description="Role of the sender (user/assistant/system)")
+    sender_role: SenderRoleType = Field(..., description="Role: SYSTEM, USER, AGENT, or TOOL")
     llm_provider: Optional[LLMProviderType] = Field(
         default="openai",
         description="LLM provider to use (openai, gemini, anthropic)"
@@ -99,7 +121,7 @@ class MessageCreateRequest(BaseModel):
             "example": {
                 "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
                 "message_content": "Hello, how can I help you today?",
-                "sender_role": "user",
+                "sender_role": "USER",
                 "llm_provider": "openai"
             }
         }
@@ -195,9 +217,145 @@ class ConversationWithMessagesResponse(BaseModel):
                     {
                         "message_id": "123e4567-e89b-12d3-a456-426614174002",
                         "message_content": "Hello!",
-                        "sender_role": "user",
+                        "sender_role": "USER",
                         "created_at": "2026-02-01T12:00:00Z"
                     }
                 ]
+            }
+        }
+
+
+# ============================================================================
+# CHAT DTOs - For AI Agent Operating Instructions
+# ============================================================================
+
+class ChatRequest(BaseModel):
+    """
+    Request body for sending a chat message to an agent.
+    This is the primary entry point for user interaction.
+    """
+    conversation_id: UUID = Field(..., description="ID of the conversation")
+    message_content: str = Field(..., min_length=1, description="User message content")
+    agent_id: UUID = Field(..., description="ID of the agent to respond")
+    llm_provider: Optional[LLMProviderType] = Field(
+        default="openai",
+        description="LLM provider to use"
+    )
+    max_history: Optional[int] = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of recent messages to include as context"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "message_content": "What is machine learning?",
+                "agent_id": "123e4567-e89b-12d3-a456-426614174999",
+                "llm_provider": "openai",
+                "max_history": 10
+            }
+        }
+
+
+class ToolCallRequest(BaseModel):
+    """
+    Request body for recording a tool call result.
+    Tool outputs are stored as TOOL role messages.
+    """
+    conversation_id: UUID = Field(..., description="ID of the conversation")
+    tool_name: str = Field(..., description="Name of the tool that was called")
+    tool_input: Optional[str] = Field(None, description="Input provided to the tool")
+    tool_output: str = Field(..., description="Output returned by the tool")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "tool_name": "calculator",
+                "tool_input": "2 + 2",
+                "tool_output": "4"
+            }
+        }
+
+
+class SystemMessageRequest(BaseModel):
+    """
+    Request body for creating a system message.
+    Used for system notices, errors, or policy messages.
+    """
+    conversation_id: UUID = Field(..., description="ID of the conversation")
+    message_content: str = Field(..., description="System message content")
+    is_error: Optional[bool] = Field(default=False, description="Whether this is an error message")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "message_content": "Session timeout. Please re-authenticate.",
+                "is_error": True
+            }
+        }
+
+
+class ChatResponse(BaseModel):
+    """
+    Response model for chat interactions.
+    Contains the agent's response and metadata.
+    """
+    conversation_id: UUID
+    user_message: MessageResponse
+    agent_response: MessageResponse
+    agent_id: UUID
+    agent_name: Optional[str]
+    messages_in_context: int = Field(description="Number of messages used as context")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "user_message": {
+                    "message_id": "123e4567-e89b-12d3-a456-426614174002",
+                    "message_content": "What is machine learning?",
+                    "sender_role": "USER"
+                },
+                "agent_response": {
+                    "message_id": "123e4567-e89b-12d3-a456-426614174003",
+                    "message_content": "Machine learning is a subset of AI...",
+                    "sender_role": "AGENT"
+                },
+                "agent_id": "123e4567-e89b-12d3-a456-426614174999",
+                "agent_name": "Research Assistant",
+                "messages_in_context": 5
+            }
+        }
+
+
+class ChatHistoryResponse(BaseModel):
+    """
+    Response model for chat history with role-based grouping.
+    Provides structured view of conversation timeline.
+    """
+    conversation_id: UUID
+    conversation_topic: Optional[str]
+    total_messages: int
+    messages: List[MessageResponse]
+    role_counts: dict = Field(description="Count of messages by role")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "conversation_topic": "Machine Learning Discussion",
+                "total_messages": 10,
+                "messages": [],
+                "role_counts": {
+                    "USER": 4,
+                    "AGENT": 4,
+                    "SYSTEM": 1,
+                    "TOOL": 1
+                }
             }
         }
