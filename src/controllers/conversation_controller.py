@@ -55,7 +55,7 @@ router = APIRouter(
 
 
 @router.get(
-    "/",
+    "",
     status_code=status.HTTP_200_OK,
     summary="Get all conversations",
     description="Retrieve all conversations using ORM"
@@ -124,7 +124,7 @@ async def get_conversation_by_id(
         )
     
 @router.post(
-    "/",
+    "",
     status_code=status.HTTP_201_CREATED,
     summary="Create a new conversation",
     description="Create a new conversation using ORM"

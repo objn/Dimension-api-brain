@@ -7,13 +7,20 @@ from src.config import settings
 
 
 class TrailingSlashMiddleware(BaseHTTPMiddleware):
-    """Middleware to normalize URLs by removing trailing slash"""
+    """Middleware to normalize URLs"""
     
     async def dispatch(self, request: Request, call_next):
         path = request.scope["path"]
+        
+        # Strip /llm prefix if present (reverse proxy didn't strip it)
+        if path.startswith("/llm"):
+            path = path[4:] or "/"  # Remove "/llm", default to "/" if empty
+        
         # Remove trailing slash (except for root path "/")
         if path != "/" and path.endswith("/"):
-            request.scope["path"] = path.rstrip("/")
+            path = path.rstrip("/")
+        
+        request.scope["path"] = path
         return await call_next(request)
 
 

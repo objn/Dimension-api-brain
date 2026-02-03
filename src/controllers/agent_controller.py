@@ -27,7 +27,7 @@ router = APIRouter(
 
 
 @router.get(
-    "/",
+    "",
     status_code=status.HTTP_200_OK,
     summary="Get all agents",
     description="Retrieve all agents using ORM"
@@ -111,7 +111,7 @@ async def search_agents(name: str, db: Session = Depends(get_db)):
 
 
 @router.post(
-    "/",
+    "",
     status_code=status.HTTP_201_CREATED,
     summary="Create new agent",
     description="Create a new agent using ORM (requires authentication)"
