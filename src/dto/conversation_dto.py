@@ -196,13 +196,14 @@ class MessageListResponse(BaseModel):
 
 
 class ConversationWithMessagesResponse(BaseResponseModel):
-    """Response model for conversation with its messages"""
+    """Response model for conversation with its messages and statistics"""
     conversation_id: UUID
     conversation_topic: Optional[str]
     created_at: Optional[datetime]
     created_by: Optional[UUID]
     updated_at: Optional[datetime]
     updated_by: Optional[UUID]
+    total_messages: int = 0
     messages: list[MessageResponse]
 
     class Config:
@@ -215,6 +216,8 @@ class ConversationWithMessagesResponse(BaseResponseModel):
                 "created_by": "123e4567-e89b-12d3-a456-426614174001",
                 "updated_at": "2026-02-01T12:00:00Z",
                 "updated_by": "123e4567-e89b-12d3-a456-426614174001",
+                "total_messages": 25,
+                "role_counts": {"USER": 10, "AGENT": 10, "SYSTEM": 3, "TOOL": 2},
                 "messages": [
                     {
                         "message_id": "123e4567-e89b-12d3-a456-426614174002",

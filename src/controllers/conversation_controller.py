@@ -39,7 +39,6 @@ from src.dto.conversation_dto import (
     ChatResponse,
     ToolCallRequest,
     SystemMessageRequest,
-    ChatHistoryResponse,
     SenderRole
 )
 from src.dto.response_dto import success_response, error_response
@@ -116,6 +115,13 @@ async def get_conversation_by_id(
             reverse = sort_order.lower() == "desc"
             messages.sort(key=lambda m: getattr(m, sort_by) or datetime.min, reverse=reverse)
 
+        # Calculate role counts
+        role_counts = {"USER": 0, "AGENT": 0, "SYSTEM": 0, "TOOL": 0}
+        for msg in messages:
+            role = msg.sender_role.upper() if isinstance(msg.sender_role, str) else msg.sender_role.value.upper()
+            if role in role_counts:
+                role_counts[role] += 1
+
         result = ConversationWithMessagesResponse(
             conversation_id=conversation.conversation_id,
             conversation_topic=conversation.conversation_topic,
@@ -123,6 +129,7 @@ async def get_conversation_by_id(
             created_by=conversation.created_by,
             updated_at=conversation.updated_at,
             updated_by=conversation.updated_by,
+            total_messages=len(messages),
             messages=[MessageResponse.model_validate(msg) for msg in messages]
         )
         return success_response(result.model_dump())
@@ -279,7 +286,6 @@ async def add_message_to_conversation(
         message_repo = convo_repo.get_message_repository()
         created_message = message_repo.create(new_message)
         result = MessageResponse.model_validate(created_message)
-
 
         return success_response(result.model_dump())
     except HTTPException:
@@ -495,36 +501,4 @@ async def create_system_message(
         )
 
 
-@router.get(
-    "/{conversation_id}/chat/history",
-    status_code=status.HTTP_200_OK,
-    summary="Get chat history with role statistics",
-    description="""
-    Get the full chat history with role-based message counts.
-    
-    Returns all messages in chronological order with statistics:
-    - Total message count
-    - Count per role (USER, AGENT, SYSTEM, TOOL)
-    """
-)
-async def get_chat_history(
-    conversation_id: UUID,
-    db: Session = Depends(get_db)
-):
-    """Get full chat history with role statistics."""
-    try:
-        chat_service = ChatService(db)
-        
-        history = chat_service.get_chat_history(conversation_id)
-        return success_response(history.model_dump())
-    
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching chat history: {str(e)}"
-        )
+
