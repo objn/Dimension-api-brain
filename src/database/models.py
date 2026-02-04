@@ -89,7 +89,13 @@ class Metadatas(Base):
     metadata_json = Column("metadata", JSON)  # Renamed to avoid SQLAlchemy reserved name
     content_to_summarize = Column(Text)
     created_at = Column(DateTime)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
+
+    # Relationships
+    creator = relationship("Users", foreign_keys=[created_by])
+    updater = relationship("Users", foreign_keys=[updated_by])
 
     # Note: metadata_of can reference multiple table types (polymorphic)
     # You may need to handle this relationship based on your use case

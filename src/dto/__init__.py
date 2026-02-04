@@ -15,6 +15,12 @@ from .conversation_dto import (
     MessageListResponse,
     ConversationWithMessagesResponse
 )
+from .metadata_dto import (
+    MetadataCreateRequest,
+    MetadataUpdateRequest,
+    MetadataResponse,
+    MetadataListResponse
+)
 
 __all__ = [
     "AgentCreateRequest",
@@ -29,5 +35,9 @@ __all__ = [
     "MessageUpdateRequest",
     "MessageResponse",
     "MessageListResponse",
-    "ConversationWithMessagesResponse"
+    "ConversationWithMessagesResponse",
+    "MetadataCreateRequest",
+    "MetadataUpdateRequest",
+    "MetadataResponse",
+    "MetadataListResponse"
 ]
