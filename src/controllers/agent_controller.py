@@ -30,20 +30,20 @@ router = APIRouter(
     "",
     status_code=status.HTTP_200_OK,
     summary="Get all agents",
-    description="Retrieve all agents using ORM"
+    description="Retrieve all agents created by the authenticated user"
 )
 async def get_all_agents(
     limit: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get all agents - uses ORM query"""
+    """Get all agents created by the authenticated user - uses ORM query"""
     try:
         repo = AgentRepository(db)
+        agents = repo.find_by_creator(user_id)
 
         if limit:
-            agents = repo.find_recent(limit=limit)
-        else:
-            agents = repo.find_all()
+            agents = agents[:limit]
 
         result = AgentListResponse(
             count=len(agents),
@@ -61,10 +61,14 @@ async def get_all_agents(
     "/{agent_id}",
     status_code=status.HTTP_200_OK,
     summary="Get agent by ID",
-    description="Retrieve a single agent by ID using ORM"
+    description="Retrieve a single agent by ID (only if created by authenticated user)"
 )
-async def get_agent_by_id(agent_id: UUID, db: Session = Depends(get_db)):
-    """Get agent by ID - uses ORM"""
+async def get_agent_by_id(
+    agent_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get agent by ID - uses ORM, only returns if user owns the agent"""
     try:
         repo = AgentRepository(db)
         agent = repo.find_one_by_id(agent_id)
@@ -73,6 +77,12 @@ async def get_agent_by_id(agent_id: UUID, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
+            )
+
+        if agent.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this agent"
             )
 
         result = AgentResponse.model_validate(agent)
@@ -90,13 +100,19 @@ async def get_agent_by_id(agent_id: UUID, db: Session = Depends(get_db)):
     "/search/{name}",
     status_code=status.HTTP_200_OK,
     summary="Search agents by name",
-    description="Search agents by name (partial match) using ORM"
+    description="Search agents by name (partial match) among user's own agents"
 )
-async def search_agents(name: str, db: Session = Depends(get_db)):
-    """Search agents by name - uses ORM"""
+async def search_agents(
+    name: str,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Search agents by name - uses ORM, filtered by user's own agents"""
     try:
         repo = AgentRepository(db)
         agents = repo.search_by_name(name)
+        # Filter to only show agents created by the authenticated user
+        agents = [agent for agent in agents if agent.created_by == user_id]
 
         result = AgentListResponse(
             count=len(agents),
@@ -174,6 +190,13 @@ async def update_agent(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
+        # Check if user owns this agent
+        if agent.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to update this agent"
+            )
+
         # Prepare update data (only fields that were provided)
         update_data = request.model_dump(exclude_unset=True)
         update_data['updated_at'] = datetime.utcnow()
@@ -207,7 +230,7 @@ async def patch_agent(
     user_id: UUID = Depends(get_current_user_id)
 ):
     """Patch agent - uses ORM (alias for PUT) with authenticated user_id"""
-    return await update_agent(agent_id, request, user_id, db)
+    return await update_agent(agent_id, request, db, user_id)
 
 
 @router.delete(
@@ -247,25 +270,3 @@ async def delete_agent(agent_id: UUID, db: Session = Depends(get_db)):
         )
 
 
-@router.get(
-    "/creator/{user_id}",
-    status_code=status.HTTP_200_OK,
-    summary="Get agents by creator",
-    description="Get all agents created by a specific user using ORM"
-)
-async def get_agents_by_creator(user_id: UUID, db: Session = Depends(get_db)):
-    """Get agents by creator - uses ORM"""
-    try:
-        repo = AgentRepository(db)
-        agents = repo.find_by_creator(user_id)
-
-        result = AgentListResponse(
-            count=len(agents),
-            agents=[AgentResponse.model_validate(agent) for agent in agents]
-        )
-        return success_response(result.model_dump())
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching agents: {str(e)}"
-        )
