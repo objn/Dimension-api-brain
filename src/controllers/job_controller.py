@@ -1,0 +1,493 @@
+"""
+Job CRUD controller.
+All operations use ORM - no raw SQL queries.
+"""
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import Optional
+from uuid import UUID, uuid4
+from datetime import datetime
+
+from src.database import get_db
+from src.repositories.job_repository import JobRepository
+from src.repositories.base_repository import BaseRepository
+from src.database.models import Job, Metadatas
+from src.dto.job_dto import (
+    JobCreateRequest,
+    JobUpdateStatusRequest,
+    JobInterruptRequest,
+    JobResponse,
+    JobWithMetadataResponse,
+    JobListResponse,
+    JobWithMetadataListResponse
+)
+from src.dto.metadata_dto import MetadataResponse
+from src.dto.response_dto import success_response, error_response
+from src.utils.auth import get_current_user_id
+
+router = APIRouter(
+    prefix="/jobs",
+    tags=["Jobs"]
+)
+
+
+# ============================================================================
+# GET Endpoints
+# ============================================================================
+
+@router.get(
+    "",
+    status_code=status.HTTP_200_OK,
+    summary="Get all jobs by owner",
+    description="Retrieve all jobs created by the authenticated user"
+)
+async def get_all_jobs(
+    limit: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get all jobs created by the authenticated user - uses ORM query"""
+    try:
+        repo = JobRepository(db)
+        jobs = repo.find_by_creator(user_id)
+
+        if limit:
+            jobs = jobs[:limit]
+
+        result = JobListResponse(
+            count=len(jobs),
+            jobs=[JobResponse.model_validate(job) for job in jobs]
+        )
+        return success_response(result.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching jobs: {str(e)}"
+        )
+
+
+@router.get(
+    "/metadata",
+    status_code=status.HTTP_200_OK,
+    summary="Get all jobs with metadata by owner",
+    description="Retrieve all jobs with their metadata created by the authenticated user"
+)
+async def get_all_jobs_with_metadata(
+    limit: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get all jobs with metadata created by the authenticated user"""
+    try:
+        repo = JobRepository(db)
+        results = repo.find_by_creator_with_metadata(user_id)
+
+        if limit:
+            results = results[:limit]
+
+        jobs_with_metadata = []
+        for job, metadata in results:
+            job_data = JobWithMetadataResponse(
+                job_id=job.job_id,
+                job_result=job.job_result,
+                created_at=job.created_at,
+                created_by=job.created_by,
+                updated_at=job.updated_at,
+                updated_by=job.updated_by,
+                metadata=MetadataResponse.model_validate(metadata) if metadata else None
+            )
+            jobs_with_metadata.append(job_data)
+
+        result = JobWithMetadataListResponse(
+            count=len(jobs_with_metadata),
+            jobs=jobs_with_metadata
+        )
+        return success_response(result.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching jobs with metadata: {str(e)}"
+        )
+
+
+@router.get(
+    "/{job_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Get job by ID with metadata",
+    description="Retrieve a single job by ID with its metadata (only if created by authenticated user)"
+)
+async def get_job_by_id(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get job by ID with metadata - uses ORM, only returns if user owns the job"""
+    try:
+        repo = JobRepository(db)
+        result = repo.find_one_by_id_with_metadata(job_id)
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+
+        job, metadata = result
+
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this job"
+            )
+
+        response = JobWithMetadataResponse(
+            job_id=job.job_id,
+            job_result=job.job_result,
+            created_at=job.created_at,
+            created_by=job.created_by,
+            updated_at=job.updated_at,
+            updated_by=job.updated_by,
+            metadata=MetadataResponse.model_validate(metadata) if metadata else None
+        )
+        return success_response(response.model_dump())
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching job: {str(e)}"
+        )
+
+
+# ============================================================================
+# POST Endpoints
+# ============================================================================
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new job with metadata",
+    description="Create a new job and its associated metadata"
+)
+async def create_job(
+    request: JobCreateRequest,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Create a new job with optional metadata"""
+    try:
+        now = datetime.utcnow()
+        job_id = uuid4()
+
+        # Create job
+        new_job = Job(
+            job_id=job_id,
+            job_result=request.job_result or "PENDING",
+            created_at=now,
+            created_by=user_id,
+            updated_at=now,
+            updated_by=user_id
+        )
+
+        repo = JobRepository(db)
+        created_job = repo.create(new_job)
+
+        # Create metadata if provided
+        metadata_response = None
+        if request.metadata_json is not None or request.content_to_summarize is not None:
+            metadata_id = uuid4()
+            new_metadata = Metadatas(
+                metadata_id=metadata_id,
+                metadata_of=job_id,
+                metadata_json=request.metadata_json,
+                content_to_summarize=request.content_to_summarize,
+                created_at=now,
+                created_by=user_id,
+                updated_at=now,
+                updated_by=user_id
+            )
+            db.add(new_metadata)
+            db.commit()
+            db.refresh(new_metadata)
+            metadata_response = MetadataResponse.model_validate(new_metadata)
+
+        response = JobWithMetadataResponse(
+            job_id=created_job.job_id,
+            job_result=created_job.job_result,
+            created_at=created_job.created_at,
+            created_by=created_job.created_by,
+            updated_at=created_job.updated_at,
+            updated_by=created_job.updated_by,
+            metadata=metadata_response
+        )
+        return success_response(response.model_dump())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating job: {str(e)}"
+        )
+
+
+# ============================================================================
+# PUT Endpoints
+# ============================================================================
+
+@router.put(
+    "/{job_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Update job status and metadata",
+    description="Update job status and its associated metadata"
+)
+async def update_job_status(
+    job_id: UUID,
+    request: JobUpdateStatusRequest,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Update job status and metadata"""
+    try:
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to update this job"
+            )
+
+        now = datetime.utcnow()
+
+        # Update job
+        updated_job = repo.update_by_id(job_id, {
+            "job_result": request.job_result,
+            "updated_at": now,
+            "updated_by": user_id
+        })
+
+        # Update or create metadata
+        metadata_response = None
+        existing_metadata = db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).first()
+
+        if existing_metadata:
+            # Update existing metadata
+            if request.metadata_json is not None:
+                existing_metadata.metadata_json = request.metadata_json
+            if request.content_to_summarize is not None:
+                existing_metadata.content_to_summarize = request.content_to_summarize
+            existing_metadata.updated_at = now
+            existing_metadata.updated_by = user_id
+            db.commit()
+            db.refresh(existing_metadata)
+            metadata_response = MetadataResponse.model_validate(existing_metadata)
+        elif request.metadata_json is not None or request.content_to_summarize is not None:
+            # Create new metadata
+            metadata_id = uuid4()
+            new_metadata = Metadatas(
+                metadata_id=metadata_id,
+                metadata_of=job_id,
+                metadata_json=request.metadata_json,
+                content_to_summarize=request.content_to_summarize,
+                created_at=now,
+                created_by=user_id,
+                updated_at=now,
+                updated_by=user_id
+            )
+            db.add(new_metadata)
+            db.commit()
+            db.refresh(new_metadata)
+            metadata_response = MetadataResponse.model_validate(new_metadata)
+
+        response = JobWithMetadataResponse(
+            job_id=updated_job.job_id,
+            job_result=updated_job.job_result,
+            created_at=updated_job.created_at,
+            created_by=updated_job.created_by,
+            updated_at=updated_job.updated_at,
+            updated_by=updated_job.updated_by,
+            metadata=metadata_response
+        )
+        return success_response(response.model_dump())
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating job: {str(e)}"
+        )
+
+
+# ============================================================================
+# PATCH Endpoints
+# ============================================================================
+
+@router.patch(
+    "/{job_id}/interrupt",
+    status_code=status.HTTP_200_OK,
+    summary="Interrupt a job",
+    description="Interrupt a running job by setting its status to INTERRUPTED"
+)
+async def interrupt_job(
+    job_id: UUID,
+    request: Optional[JobInterruptRequest] = None,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Interrupt a job - sets status to INTERRUPTED"""
+    try:
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to interrupt this job"
+            )
+
+        # Check if job can be interrupted (only PENDING or RUNNING jobs)
+        if job.job_result not in ["PENDING", "RUNNING"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot interrupt job with status '{job.job_result}'. Only PENDING or RUNNING jobs can be interrupted."
+            )
+
+        now = datetime.utcnow()
+
+        # Update job status to INTERRUPTED
+        updated_job = repo.update_by_id(job_id, {
+            "job_result": "INTERRUPTED",
+            "updated_at": now,
+            "updated_by": user_id
+        })
+
+        # Update metadata with interrupt reason if provided
+        metadata_response = None
+        existing_metadata = db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).first()
+
+        if existing_metadata:
+            if request and request.reason:
+                # Add interrupt reason to metadata
+                current_json = existing_metadata.metadata_json or {}
+                current_json["interrupt_reason"] = request.reason
+                current_json["interrupted_at"] = now.isoformat()
+                existing_metadata.metadata_json = current_json
+            existing_metadata.updated_at = now
+            existing_metadata.updated_by = user_id
+            db.commit()
+            db.refresh(existing_metadata)
+            metadata_response = MetadataResponse.model_validate(existing_metadata)
+        elif request and request.reason:
+            # Create new metadata with interrupt reason
+            metadata_id = uuid4()
+            new_metadata = Metadatas(
+                metadata_id=metadata_id,
+                metadata_of=job_id,
+                metadata_json={
+                    "interrupt_reason": request.reason,
+                    "interrupted_at": now.isoformat()
+                },
+                created_at=now,
+                created_by=user_id,
+                updated_at=now,
+                updated_by=user_id
+            )
+            db.add(new_metadata)
+            db.commit()
+            db.refresh(new_metadata)
+            metadata_response = MetadataResponse.model_validate(new_metadata)
+
+        response = JobWithMetadataResponse(
+            job_id=updated_job.job_id,
+            job_result=updated_job.job_result,
+            created_at=updated_job.created_at,
+            created_by=updated_job.created_by,
+            updated_at=updated_job.updated_at,
+            updated_by=updated_job.updated_by,
+            metadata=metadata_response
+        )
+        return success_response(response.model_dump())
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interrupting job: {str(e)}"
+        )
+
+
+# ============================================================================
+# DELETE Endpoints
+# ============================================================================
+
+@router.delete(
+    "/{job_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete a job and its metadata",
+    description="Delete a job and its associated metadata"
+)
+async def delete_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Delete a job and its metadata"""
+    try:
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this job"
+            )
+
+        # Delete associated metadata first
+        db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).delete()
+
+        # Delete job
+        deleted = repo.delete_by_id(job_id)
+
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete job"
+            )
+
+        return success_response({
+            "message": f"Job {job_id} and its metadata deleted successfully",
+            "job_id": str(job_id)
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting job: {str(e)}"
+        )

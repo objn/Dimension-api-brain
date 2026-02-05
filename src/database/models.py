@@ -226,3 +226,24 @@ class Workspaces(Base):
     Users = relationship("Users", foreign_keys=[created_by])
     Users = relationship("Users", foreign_keys=[updated_by])
 
+class Job(Base):
+    """Model for Jobs table"""
+    __tablename__ = "Jobs"
+
+    job_id = Column(UUID(as_uuid=True), primary_key=True)
+    job_result = Column(String(16))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(UUID(as_uuid=True))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(UUID(as_uuid=True))
+
+    job_result_rel = relationship("JobResults", foreign_keys=[job_result])
+    Users = relationship("Users", foreign_keys=[created_by])
+    Users = relationship("Users", foreign_keys=[updated_by])
+
+class JobResults(Base):
+    """Model for JobResults table"""
+    __tablename__ = "JobResults"
+
+    job_result = Column(String(16), primary_key=True)
+    description = Column(Text)

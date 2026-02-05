@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.controllers import agent_router, conversation_router, metadata_router, example_gen_router
+from src.controllers import agent_router, conversation_router, metadata_router, example_gen_router, job_router
 from src.config import settings
 
 
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(conversation_router)
     app.include_router(metadata_router)
     app.include_router(example_gen_router)
+    app.include_router(job_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)
