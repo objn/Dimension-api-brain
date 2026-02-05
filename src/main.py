@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.controllers import agent_router, conversation_router, example_gen_router
+from src.controllers import agent_router, conversation_router, metadata_router, example_gen_router
 from src.config import settings
 
 
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(agent_router)
     app.include_router(conversation_router)
+    app.include_router(metadata_router)
     app.include_router(example_gen_router)
 
     # Root endpoint

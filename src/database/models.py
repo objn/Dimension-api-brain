@@ -89,7 +89,13 @@ class Metadatas(Base):
     metadata_json = Column("metadata", JSON)  # Map to 'metadata' column in DB
     content_to_summarize = Column(Text)
     created_at = Column(DateTime)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
+
+    # Relationships
+    creator = relationship("Users", foreign_keys=[created_by])
+    updater = relationship("Users", foreign_keys=[updated_by])
 
     Agents = relationship("Agents", foreign_keys=[metadata_of])
     Conversations = relationship("Conversations", foreign_keys=[metadata_of])

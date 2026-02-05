@@ -15,6 +15,12 @@ from .conversation_dto import (
     MessageListResponse,
     ConversationWithMessagesResponse
 )
+from .metadata_dto import (
+    MetadataCreateRequest,
+    MetadataUpdateRequest,
+    MetadataResponse,
+    MetadataListResponse
+)
 from .node_dto import (
     NodeCreateRequest,
     NodeUpdateRequest,
@@ -45,6 +51,11 @@ __all__ = [
     "MessageUpdateRequest",
     "MessageResponse",
     "MessageListResponse",
+    "ConversationWithMessagesResponse",
+    "MetadataCreateRequest",
+    "MetadataUpdateRequest",
+    "MetadataResponse",
+    "MetadataListResponse"
     "ConversationWithMessagesResponse",
     "NodeCreateRequest",
     "NodeUpdateRequest",
