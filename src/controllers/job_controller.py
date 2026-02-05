@@ -24,6 +24,7 @@ from src.dto.job_dto import (
 from src.dto.metadata_dto import MetadataResponse
 from src.dto.response_dto import success_response, error_response
 from src.utils.auth import get_current_user_id
+from src.services.job_service import job_service, JobStatus
 
 router = APIRouter(
     prefix="/jobs",
@@ -491,3 +492,137 @@ async def delete_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting job: {str(e)}"
         )
+
+
+# ============================================================================
+# Service-based Job Management Endpoints
+# ============================================================================
+
+@router.get(
+    "/active",
+    status_code=status.HTTP_200_OK,
+    summary="Get all active jobs",
+    description="Retrieve all active (PENDING or PROCESSING) jobs for the authenticated user"
+)
+async def get_active_jobs(
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get all active jobs for the current user"""
+    try:
+        active_jobs = job_service.get_active_jobs(user_id)
+        return success_response({
+            "count": len(active_jobs),
+            "jobs": active_jobs
+        })
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching active jobs: {str(e)}"
+        )
+
+
+@router.get(
+    "/{job_id}/status",
+    status_code=status.HTTP_200_OK,
+    summary="Get job status",
+    description="Get the current status of a job"
+)
+async def get_job_status_endpoint(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get job status with progress information"""
+    try:
+        # Verify ownership
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+        
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+        
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this job"
+            )
+        
+        # Get full job info from service
+        job_info = job_service.get_job_info(job_id)
+        
+        if job_info:
+            return success_response(job_info)
+        else:
+            return success_response({
+                "job_id": str(job_id),
+                "status": job.job_result,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "updated_at": job.updated_at.isoformat() if job.updated_at else None
+            })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching job status: {str(e)}"
+        )
+
+
+@router.get(
+    "/{job_id}/history",
+    status_code=status.HTTP_200_OK,
+    summary="Get job status history",
+    description="Get the status transition history of a job"
+)
+async def get_job_history(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get job status history from metadata"""
+    try:
+        # Verify ownership
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+        
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+        
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this job"
+            )
+        
+        # Get metadata with history
+        metadata = db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).first()
+        
+        if metadata and metadata.metadata_json:
+            history = metadata.metadata_json.get("status_history", [])
+            return success_response({
+                "job_id": str(job_id),
+                "current_status": job.job_result,
+                "history": history
+            })
+        else:
+            return success_response({
+                "job_id": str(job_id),
+                "current_status": job.job_result,
+                "history": []
+            })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching job history: {str(e)}"
+        )
+
