@@ -86,7 +86,7 @@ class Metadatas(Base):
 
     metadata_id = Column(UUID(as_uuid=True), primary_key=True)
     metadata_of = Column(UUID(as_uuid=True))
-    metadata = Column(JSON)
+    metadata_json = Column("metadata", JSON)  # Map to 'metadata' column in DB
     content_to_summarize = Column(Text)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
