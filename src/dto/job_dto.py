@@ -2,17 +2,25 @@
 DTOs for Job operations.
 Request and response models with validation.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
+from enum import Enum
 
 from .base_dto import BaseResponseModel
 from .metadata_dto import MetadataResponse
 
 
+class JobType(str, Enum):
+    """Allowed job types"""
+    EMBEDDING = "node_content_embedding"
+
+
 class JobCreateRequest(BaseModel):
     """Request body for creating a job with metadata"""
+    job_type: JobType = Field(..., description="Type of the job")
+    job_start_time: Optional[datetime] = Field(None, description="Scheduled start time. Defaults to now + 1 minute if not provided.")
     job_result: Optional[str] = Field("PENDING", max_length=16, description="Job result status")
     metadata_json: Optional[dict] = Field(None, description="JSON metadata for the job")
     content_to_summarize: Optional[str] = Field(None, description="Content to be summarized")
@@ -20,6 +28,8 @@ class JobCreateRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "job_type": "node_content_embedding",
+                "job_start_time": "2026-02-11T12:01:00Z",
                 "job_result": "PENDING",
                 "metadata_json": {"task_type": "data_processing", "priority": "high"},
                 "content_to_summarize": "Job details to summarize..."
@@ -58,6 +68,10 @@ class JobInterruptRequest(BaseModel):
 class JobResponse(BaseResponseModel):
     """Response model for job data"""
     job_id: UUID
+    job_type: Optional[str] = None
+    job_start_time: Optional[datetime] = None
+    job_end_time: Optional[datetime] = None
+    job_actived: Optional[bool] = None
     job_result: Optional[str]
     created_at: Optional[datetime]
     created_by: Optional[UUID]
@@ -81,6 +95,10 @@ class JobResponse(BaseResponseModel):
 class JobWithMetadataResponse(BaseResponseModel):
     """Response model for job data with metadata"""
     job_id: UUID
+    job_type: Optional[str] = None
+    job_start_time: Optional[datetime] = None
+    job_end_time: Optional[datetime] = None
+    job_actived: Optional[bool] = None
     job_result: Optional[str]
     created_at: Optional[datetime]
     created_by: Optional[UUID]

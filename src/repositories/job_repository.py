@@ -62,5 +62,15 @@ class JobRepository(BaseRepository[Job]):
         return self.find_by_status("PENDING", user_id)
 
     def find_running_jobs(self, user_id: UUID) -> List[Job]:
-        """Find all running jobs for a user"""
-        return self.find_by_status("RUNNING", user_id)
+        """Find all running/processing jobs for a user"""
+        return self.db.query(Job).filter(
+            Job.job_result.in_(["PROCESSING", "RUNNING"]),
+            Job.created_by == user_id
+        ).all()
+
+    def find_stoppable_jobs(self, user_id: UUID) -> List[Job]:
+        """Find all jobs that can be stopped (PENDING or PROCESSING)"""
+        return self.db.query(Job).filter(
+            Job.job_result.in_(["PENDING", "PROCESSING", "RUNNING"]),
+            Job.created_by == user_id
+        ).all()

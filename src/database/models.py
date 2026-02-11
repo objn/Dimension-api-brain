@@ -231,6 +231,10 @@ class Job(Base):
     __tablename__ = "Jobs"
 
     job_id = Column(UUID(as_uuid=True), primary_key=True)
+    job_type = Column(String(255))
+    job_start_time = Column(DateTime)
+    job_end_time = Column(DateTime)
+    job_actived = Column(Boolean, default=False)
     job_result = Column(String(16))
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(UUID(as_uuid=True))

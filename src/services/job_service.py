@@ -1,31 +1,33 @@
 """
 Job Service for Background Processing Management.
 
-Provides job lifecycle management with status tracking:
-PENDING -> PROCESSING -> SUCCESS/FAILED/INTERRUPTED
+Architecture v2 - Daemon-driven:
+    - register_job() only creates DB record (PENDING)
+    - JobDaemon polls DB for ready jobs and calls activate_job()
+    - activate_job() atomically claims job (PENDING -> PROCESSING) and submits to thread pool
+    - Race condition prevention via DB-level atomic update
+    - Returns worker_break_off_time when pool is full
 
-Features:
-- Job registration and tracking
-- Status transitions with metadata at each step
-- Background task execution with callbacks
-- Job cancellation/interruption support
-- Thread-safe job state management
+Status Flow:
+    PENDING -> PROCESSING -> SUCCESS / FAILED / INTERRUPTED / CANCELLED
 """
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Dict, Any, Optional, Callable, Awaitable, List, Union
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from dataclasses import dataclass, field
 import traceback
 import logging
 
 from sqlalchemy.orm import Session
+from sqlalchemy import update
 
 from src.database.models import Job, Metadatas
 from src.database import get_db
+from src.config.settings import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -90,25 +92,35 @@ class JobInterruptedException(Exception):
     pass
 
 
+class ActivateResult:
+    """Result of activate_job() call"""
+    
+    def __init__(
+        self,
+        activated: bool,
+        reason: str = "",
+        worker_break_off_time: int = 0
+    ):
+        self.activated = activated
+        self.reason = reason
+        self.worker_break_off_time = worker_break_off_time
+    
+    def to_dict(self) -> Dict[str, Any]:
+        result = {"activated": self.activated, "reason": self.reason}
+        if self.worker_break_off_time > 0:
+            result["worker_break_off_time"] = self.worker_break_off_time
+        return result
+
+
 class JobService:
     """
     Service for managing background jobs with status tracking.
     
-    Usage:
-        job_service = JobService()
-        
-        # Register and run a job
-        job_id = await job_service.register_job(
-            user_id=user_id,
-            task_func=my_async_function,
-            metadata={"task_type": "data_processing"}
-        )
-        
-        # Check job status
-        status = job_service.get_job_status(job_id)
-        
-        # Interrupt a job
-        job_service.interrupt_job(job_id, reason="User cancelled")
+    v2 Architecture:
+        - register_job() -> creates DB record only (PENDING)
+        - activate_job() -> atomically claims + submits to thread pool
+        - JobDaemon calls activate_job() when job is ready
+        - Task functions come from TaskRegistry
     """
     
     # Singleton instance
@@ -124,45 +136,48 @@ class JobService:
                     cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self, max_workers: int = 10):
-        """
-        Initialize job service.
-        
-        Args:
-            max_workers: Maximum number of concurrent workers
-        """
+    def __init__(self):
+        """Initialize job service with settings from config."""
         if self._initialized:
             return
             
         self._initialized = True
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self._max_workers = settings.job_worker_num
+        self._break_off_time = settings.job_worker_break_off_time
+        self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
         self._jobs: Dict[UUID, JobContext] = {}
         self._futures: Dict[UUID, Future] = {}
         self._callbacks: Dict[UUID, List[Callable]] = {}
         self._job_lock = threading.Lock()
         
-        logger.info(f"JobService initialized with {max_workers} workers")
+        logger.info(
+            f"JobService initialized: workers={self._max_workers}, "
+            f"break_off_time={self._break_off_time}s"
+        )
     
     # =========================================================================
-    # Job Registration
+    # Job Registration (DB only - no execution)
     # =========================================================================
     
     async def register_job(
         self,
         user_id: UUID,
-        task_func: Union[Callable[[JobContext], Any], Callable[[JobContext], Awaitable[Any]]],
+        job_type: str,
         metadata: Optional[Dict[str, Any]] = None,
-        auto_start: bool = True,
+        job_start_time: Optional[datetime] = None,
         db: Optional[Session] = None
     ) -> UUID:
         """
-        Register a new job and optionally start it.
+        Register a new job in the database with status PENDING.
+        
+        This ONLY creates the DB record. The JobDaemon will pick it up
+        when job_start_time <= now and call activate_job().
         
         Args:
             user_id: User ID who owns the job
-            task_func: Function to execute (sync or async)
-            metadata: Initial metadata for the job
-            auto_start: Whether to start the job immediately
+            job_type: Type of the job (must be registered in TaskRegistry)
+            metadata: Job metadata (task parameters stored here)
+            job_start_time: Scheduled start time (defaults to now + 1 min)
             db: Database session (optional, will create new if not provided)
             
         Returns:
@@ -171,84 +186,145 @@ class JobService:
         job_id = uuid4()
         now = datetime.utcnow()
         
-        # Create job context
-        context = JobContext(
-            job_id=job_id,
-            user_id=user_id,
-            metadata=metadata or {},
-            _service=self
-        )
-        
-        # Store in memory
-        with self._job_lock:
-            self._jobs[job_id] = context
+        # Default start time: now + 1 minute
+        if job_start_time is None:
+            job_start_time = now + timedelta(minutes=1)
         
         # Persist to database
         if db:
-            self._persist_job(db, job_id, user_id, JobStatus.PENDING, metadata, now)
+            self._persist_job(db, job_id, user_id, JobStatus.PENDING, metadata, now, job_type, job_start_time)
         else:
-            # Create new session
             db_gen = get_db()
             try:
                 db_session = next(db_gen)
-                self._persist_job(db_session, job_id, user_id, JobStatus.PENDING, metadata, now)
+                self._persist_job(db_session, job_id, user_id, JobStatus.PENDING, metadata, now, job_type, job_start_time)
             finally:
                 try:
                     next(db_gen)
                 except StopIteration:
                     pass
         
-        logger.info(f"Job {job_id} registered with status PENDING")
-        
-        # Start job if auto_start
-        if auto_start:
-            await self.start_job(job_id, task_func)
-        
+        logger.info(f"Job {job_id} registered (type={job_type}, start_time={job_start_time})")
         return job_id
     
-    async def start_job(
-        self,
-        job_id: UUID,
-        task_func: Union[Callable[[JobContext], Any], Callable[[JobContext], Awaitable[Any]]]
-    ) -> None:
+    # =========================================================================
+    # Job Activation (called by Daemon)
+    # =========================================================================
+    
+    def activate_job(self, job_id: UUID) -> ActivateResult:
         """
-        Start a pending job.
+        Activate a pending job: atomically claim it and submit to thread pool.
+        
+        Called by JobDaemon when a job is ready to run.
+        
+        Race Condition Prevention:
+            Uses DB-level WHERE job_result = 'PENDING' to atomically claim.
+            Only one caller can successfully flip PENDING -> PROCESSING.
         
         Args:
-            job_id: Job ID to start
-            task_func: Function to execute
+            job_id: Job ID to activate
+            
+        Returns:
+            ActivateResult with activated flag and optional break_off_time
         """
-        context = self._get_context(job_id)
-        if not context:
-            raise ValueError(f"Job {job_id} not found")
-        
-        # Update status to PROCESSING
-        self._update_status(job_id, JobStatus.PROCESSING, {
-            "started_at": datetime.utcnow().isoformat()
-        })
-        
-        # Submit to executor
-        if asyncio.iscoroutinefunction(task_func):
-            # Async function - run in event loop
-            future = self._executor.submit(
-                self._run_async_task,
-                job_id,
-                task_func,
-                context
+        # Check worker availability FIRST
+        active_count = self._get_active_worker_count()
+        if active_count >= self._max_workers:
+            logger.info(
+                f"Workers full ({active_count}/{self._max_workers}), "
+                f"returning break_off_time={self._break_off_time}s"
             )
-        else:
-            # Sync function - run directly in thread
-            future = self._executor.submit(
-                self._run_sync_task,
-                job_id,
-                task_func,
-                context
+            return ActivateResult(
+                activated=False,
+                reason="workers_full",
+                worker_break_off_time=self._break_off_time
             )
         
-        with self._job_lock:
-            self._futures[job_id] = future
-        
-        logger.info(f"Job {job_id} started processing")
+        # Atomic claim: UPDATE WHERE job_result = 'PENDING'
+        db_gen = get_db()
+        try:
+            db = next(db_gen)
+            now = datetime.utcnow()
+            
+            result = db.execute(
+                update(Job)
+                .where(Job.job_id == job_id, Job.job_result == JobStatus.PENDING.value)
+                .values(
+                    job_result=JobStatus.PROCESSING.value,
+                    job_actived=True,
+                    updated_at=now
+                )
+            )
+            db.commit()
+            
+            if result.rowcount == 0:
+                # Another process already claimed it or status changed
+                logger.warning(f"Job {job_id} already claimed or not PENDING")
+                return ActivateResult(activated=False, reason="already_claimed")
+            
+            # Load job data for context
+            job = db.query(Job).filter(Job.job_id == job_id).first()
+            if not job:
+                return ActivateResult(activated=False, reason="job_not_found")
+            
+            # Load metadata for task parameters
+            metadata_record = db.query(Metadatas).filter(
+                Metadatas.metadata_of == job_id
+            ).first()
+            
+            job_metadata = {}
+            if metadata_record and metadata_record.metadata_json:
+                job_metadata = dict(metadata_record.metadata_json)
+            
+            # Get task function from registry
+            from src.services.task_registry import task_registry
+            task_func = task_registry.get(job.job_type)
+            if not task_func:
+                # No registered handler - mark as failed
+                logger.error(f"No task registered for job_type: {job.job_type}")
+                self._update_status(job_id, JobStatus.FAILED, {
+                    "error": f"No task handler registered for job_type: {job.job_type}"
+                })
+                return ActivateResult(activated=False, reason="no_task_handler")
+            
+            # Create in-memory context
+            context = JobContext(
+                job_id=job_id,
+                user_id=job.created_by,
+                metadata=job_metadata,
+                _service=self
+            )
+            
+            with self._job_lock:
+                self._jobs[job_id] = context
+            
+            # Update metadata with activation info
+            self._update_metadata_status(db, job_id, JobStatus.PROCESSING, {
+                "activated_at": now.isoformat()
+            })
+            db.commit()
+            
+            # Submit to thread pool
+            if asyncio.iscoroutinefunction(task_func):
+                future = self._executor.submit(
+                    self._run_async_task, job_id, task_func, context
+                )
+            else:
+                future = self._executor.submit(
+                    self._run_sync_task, job_id, task_func, context
+                )
+            
+            with self._job_lock:
+                self._futures[job_id] = future
+            
+            logger.info(f"Job {job_id} activated and submitted to pool")
+            return ActivateResult(activated=True)
+            
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
     
     # =========================================================================
     # Job Execution
@@ -302,6 +378,7 @@ class JobService:
         }
         self._update_status(job_id, JobStatus.SUCCESS, metadata)
         self._trigger_callbacks(job_id, JobStatus.SUCCESS, result)
+        self._cleanup_future(job_id)
         logger.info(f"Job {job_id} completed successfully")
     
     def _on_job_failed(self, job_id: UUID, error: Exception) -> None:
@@ -313,6 +390,7 @@ class JobService:
         }
         self._update_status(job_id, JobStatus.FAILED, metadata)
         self._trigger_callbacks(job_id, JobStatus.FAILED, error)
+        self._cleanup_future(job_id)
         logger.error(f"Job {job_id} failed: {error}")
     
     def _on_job_interrupted(self, job_id: UUID, reason: str) -> None:
@@ -323,7 +401,13 @@ class JobService:
         }
         self._update_status(job_id, JobStatus.INTERRUPTED, metadata)
         self._trigger_callbacks(job_id, JobStatus.INTERRUPTED, reason)
+        self._cleanup_future(job_id)
         logger.warning(f"Job {job_id} interrupted: {reason}")
+    
+    def _cleanup_future(self, job_id: UUID) -> None:
+        """Remove completed future from tracking"""
+        with self._job_lock:
+            self._futures.pop(job_id, None)
     
     # =========================================================================
     # Job Control
@@ -332,6 +416,7 @@ class JobService:
     def interrupt_job(self, job_id: UUID, reason: str = "User requested") -> bool:
         """
         Interrupt a running job.
+        Sets the interrupted flag so the task can check and stop gracefully.
         
         Args:
             job_id: Job ID to interrupt
@@ -344,10 +429,8 @@ class JobService:
         if not context:
             return False
         
-        # Mark as interrupted (job should check this flag)
         context._interrupted = True
         
-        # Update metadata
         self._update_status(job_id, JobStatus.INTERRUPTED, {
             "interrupt_reason": reason,
             "interrupted_at": datetime.utcnow().isoformat()
@@ -359,6 +442,7 @@ class JobService:
     def cancel_job(self, job_id: UUID) -> bool:
         """
         Cancel a pending job (before it starts).
+        Uses atomic DB update so only PENDING jobs can be cancelled.
         
         Args:
             job_id: Job ID to cancel
@@ -366,44 +450,71 @@ class JobService:
         Returns:
             True if job was cancelled
         """
-        context = self._get_context(job_id)
-        if not context:
-            return False
-        
-        # Can only cancel pending jobs
-        status = self.get_job_status(job_id)
-        if status != JobStatus.PENDING:
-            return False
-        
-        # Cancel future if exists
+        db_gen = get_db()
+        try:
+            db = next(db_gen)
+            now = datetime.utcnow()
+            
+            result = db.execute(
+                update(Job)
+                .where(Job.job_id == job_id, Job.job_result == JobStatus.PENDING.value)
+                .values(
+                    job_result=JobStatus.CANCELLED.value,
+                    job_end_time=now,
+                    updated_at=now
+                )
+            )
+            db.commit()
+            
+            if result.rowcount == 0:
+                return False
+            
+            # Clean up in-memory state if exists
+            with self._job_lock:
+                self._jobs.pop(job_id, None)
+                if job_id in self._futures:
+                    self._futures[job_id].cancel()
+                    del self._futures[job_id]
+            
+            logger.info(f"Job {job_id} cancelled")
+            return True
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+    
+    # =========================================================================
+    # Worker Pool Info
+    # =========================================================================
+    
+    def _get_active_worker_count(self) -> int:
+        """Count currently running (not done) futures"""
         with self._job_lock:
-            if job_id in self._futures:
-                self._futures[job_id].cancel()
-                del self._futures[job_id]
-        
-        # Update status
-        self._update_status(job_id, JobStatus.CANCELLED, {
-            "cancelled_at": datetime.utcnow().isoformat()
-        })
-        
-        logger.info(f"Job {job_id} cancelled")
-        return True
+            return sum(1 for f in self._futures.values() if not f.done())
+    
+    def has_available_workers(self) -> bool:
+        """Check if there are available worker slots"""
+        return self._get_active_worker_count() < self._max_workers
+    
+    def get_pool_status(self) -> Dict[str, Any]:
+        """Get thread pool status info"""
+        active = self._get_active_worker_count()
+        return {
+            "max_workers": self._max_workers,
+            "active_workers": active,
+            "available_workers": self._max_workers - active,
+            "break_off_time": self._break_off_time,
+            "tracked_jobs": len(self._jobs),
+            "tracked_futures": len(self._futures)
+        }
     
     # =========================================================================
     # Status & Progress
     # =========================================================================
     
     def get_job_status(self, job_id: UUID) -> Optional[JobStatus]:
-        """
-        Get current job status.
-        
-        Args:
-            job_id: Job ID
-            
-        Returns:
-            JobStatus or None if job not found
-        """
-        # Try to get from database
+        """Get current job status from database."""
         db_gen = get_db()
         try:
             db = next(db_gen)
@@ -415,19 +526,10 @@ class JobService:
                 next(db_gen)
             except StopIteration:
                 pass
-        
         return None
     
     def get_job_info(self, job_id: UUID) -> Optional[Dict[str, Any]]:
-        """
-        Get full job information including metadata.
-        
-        Args:
-            job_id: Job ID
-            
-        Returns:
-            Job info dict or None if not found
-        """
+        """Get full job information including metadata and progress."""
         db_gen = get_db()
         try:
             db = next(db_gen)
@@ -435,17 +537,19 @@ class JobService:
             if not job:
                 return None
             
-            # Get metadata
             metadata = db.query(Metadatas).filter(
                 Metadatas.metadata_of == job_id
             ).first()
             
-            # Get in-memory context for progress
             context = self._get_context(job_id)
             
             return {
                 "job_id": str(job.job_id),
+                "job_type": job.job_type,
                 "status": job.job_result,
+                "job_start_time": job.job_start_time.isoformat() if job.job_start_time else None,
+                "job_end_time": job.job_end_time.isoformat() if job.job_end_time else None,
+                "job_actived": job.job_actived,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "created_by": str(job.created_by) if job.created_by else None,
                 "updated_at": job.updated_at.isoformat() if job.updated_at else None,
@@ -460,15 +564,7 @@ class JobService:
                 pass
     
     def get_active_jobs(self, user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
-        """
-        Get all active (PENDING or PROCESSING) jobs.
-        
-        Args:
-            user_id: Filter by user ID (optional)
-            
-        Returns:
-            List of active job info dicts
-        """
+        """Get all active (PENDING or PROCESSING) jobs."""
         db_gen = get_db()
         try:
             db = next(db_gen)
@@ -484,7 +580,10 @@ class JobService:
             return [
                 {
                     "job_id": str(job.job_id),
+                    "job_type": job.job_type,
                     "status": job.job_result,
+                    "job_start_time": job.job_start_time.isoformat() if job.job_start_time else None,
+                    "job_actived": job.job_actived,
                     "created_at": job.created_at.isoformat() if job.created_at else None,
                     "created_by": str(job.created_by) if job.created_by else None
                 }
@@ -533,13 +632,7 @@ class JobService:
         job_id: UUID,
         callback: Callable[[UUID, JobStatus, Any], None]
     ) -> None:
-        """
-        Add a callback to be called when job completes.
-        
-        Args:
-            job_id: Job ID
-            callback: Callback function(job_id, status, result)
-        """
+        """Add a callback to be called when job completes."""
         with self._job_lock:
             if job_id not in self._callbacks:
                 self._callbacks[job_id] = []
@@ -570,12 +663,17 @@ class JobService:
         user_id: UUID,
         status: JobStatus,
         metadata: Optional[Dict[str, Any]],
-        timestamp: datetime
+        timestamp: datetime,
+        job_type: Optional[str] = None,
+        job_start_time: Optional[datetime] = None
     ) -> None:
         """Persist job to database"""
-        # Create job record
         job = Job(
             job_id=job_id,
+            job_type=job_type,
+            job_start_time=job_start_time or (timestamp + timedelta(minutes=1)),
+            job_end_time=None,
+            job_actived=False,
             job_result=status.value,
             created_at=timestamp,
             created_by=user_id,
@@ -584,7 +682,6 @@ class JobService:
         )
         db.add(job)
         
-        # Create metadata record
         if metadata:
             metadata_record = Metadatas(
                 metadata_id=uuid4(),
@@ -618,64 +715,125 @@ class JobService:
             db = next(db_gen)
             now = datetime.utcnow()
             
-            # Update job
             job = db.query(Job).filter(Job.job_id == job_id).first()
             if job:
                 job.job_result = status.value
                 job.updated_at = now
+                
+                if status == JobStatus.PROCESSING:
+                    job.job_actived = True
+                
+                terminal_statuses = [
+                    JobStatus.SUCCESS, JobStatus.FAILED,
+                    JobStatus.INTERRUPTED, JobStatus.CANCELLED
+                ]
+                if status in terminal_statuses:
+                    job.job_end_time = now
             
             # Update metadata
-            metadata = db.query(Metadatas).filter(
-                Metadatas.metadata_of == job_id
-            ).first()
-            
-            if metadata:
-                current = metadata.metadata_json or {}
-                
-                # Add to status history
-                if "status_history" not in current:
-                    current["status_history"] = []
-                
-                current["status_history"].append({
-                    "status": status.value,
-                    "timestamp": now.isoformat(),
-                    "data": metadata_update
-                })
-                
-                # Merge metadata update
-                if metadata_update:
-                    current.update(metadata_update)
-                
-                current["current_status"] = status.value
-                current["last_updated"] = now.isoformat()
-                
-                metadata.metadata_json = current
-                metadata.updated_at = now
-            elif metadata_update:
-                # Create new metadata if none exists
-                context = self._get_context(job_id)
-                user_id = context.user_id if context else job.created_by
-                
-                metadata_record = Metadatas(
-                    metadata_id=uuid4(),
-                    metadata_of=job_id,
-                    metadata_json={
-                        "status_history": [{
-                            "status": status.value,
-                            "timestamp": now.isoformat(),
-                            "data": metadata_update
-                        }],
-                        "current_status": status.value,
-                        **metadata_update
-                    },
-                    created_at=now,
-                    created_by=user_id,
-                    updated_at=now,
-                    updated_by=user_id
-                )
-                db.add(metadata_record)
+            self._update_metadata_status(db, job_id, status, metadata_update)
             
             db.commit()
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+    
+    def _update_metadata_status(
+        self,
+        db: Session,
+        job_id: UUID,
+        status: JobStatus,
+        metadata_update: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Update metadata record with status info (does NOT commit)"""
+        now = datetime.utcnow()
+        metadata = db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).first()
+        
+        if metadata:
+            current = metadata.metadata_json or {}
+            
+            if "status_history" not in current:
+                current["status_history"] = []
+            
+            current["status_history"].append({
+                "status": status.value,
+                "timestamp": now.isoformat(),
+                "data": metadata_update
+            })
+            
+            if metadata_update:
+                current.update(metadata_update)
+            
+            current["current_status"] = status.value
+            current["last_updated"] = now.isoformat()
+            
+            metadata.metadata_json = current
+            metadata.updated_at = now
+        elif metadata_update:
+            context = self._get_context(job_id)
+            user_id = context.user_id if context else None
+            
+            if user_id is None:
+                job = db.query(Job).filter(Job.job_id == job_id).first()
+                user_id = job.created_by if job else None
+            
+            metadata_record = Metadatas(
+                metadata_id=uuid4(),
+                metadata_of=job_id,
+                metadata_json={
+                    "status_history": [{
+                        "status": status.value,
+                        "timestamp": now.isoformat(),
+                        "data": metadata_update
+                    }],
+                    "current_status": status.value,
+                    **metadata_update
+                },
+                created_at=now,
+                created_by=user_id,
+                updated_at=now,
+                updated_by=user_id
+            )
+            db.add(metadata_record)
+    
+    # =========================================================================
+    # Orphan Recovery (on startup)
+    # =========================================================================
+    
+    def recover_orphaned_jobs(self) -> int:
+        """
+        Reset PROCESSING jobs back to PENDING on startup.
+        
+        These are jobs that were running when the server crashed.
+        The daemon will pick them up again.
+        
+        Returns:
+            Number of recovered jobs
+        """
+        db_gen = get_db()
+        try:
+            db = next(db_gen)
+            now = datetime.utcnow()
+            
+            result = db.execute(
+                update(Job)
+                .where(Job.job_result == JobStatus.PROCESSING.value)
+                .values(
+                    job_result=JobStatus.PENDING.value,
+                    job_actived=False,
+                    updated_at=now
+                )
+            )
+            db.commit()
+            
+            count = result.rowcount
+            if count > 0:
+                logger.warning(f"Recovered {count} orphaned PROCESSING jobs back to PENDING")
+            return count
         finally:
             try:
                 next(db_gen)
@@ -692,15 +850,7 @@ class JobService:
             return self._jobs.get(job_id)
     
     def cleanup_completed_jobs(self, older_than_hours: int = 24) -> int:
-        """
-        Clean up completed job contexts from memory.
-        
-        Args:
-            older_than_hours: Remove jobs older than this many hours
-            
-        Returns:
-            Number of jobs cleaned up
-        """
+        """Clean up completed job contexts from memory."""
         cleaned = 0
         completed_statuses = [
             JobStatus.SUCCESS, JobStatus.FAILED,
@@ -716,22 +866,16 @@ class JobService:
             
             for job_id in to_remove:
                 del self._jobs[job_id]
-                if job_id in self._futures:
-                    del self._futures[job_id]
-                if job_id in self._callbacks:
-                    del self._callbacks[job_id]
+                self._futures.pop(job_id, None)
+                self._callbacks.pop(job_id, None)
                 cleaned += 1
         
-        logger.info(f"Cleaned up {cleaned} completed jobs from memory")
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} completed jobs from memory")
         return cleaned
     
     def shutdown(self, wait: bool = True) -> None:
-        """
-        Shutdown the job service.
-        
-        Args:
-            wait: Wait for running jobs to complete
-        """
+        """Shutdown the job service."""
         logger.info("Shutting down JobService...")
         self._executor.shutdown(wait=wait)
         logger.info("JobService shutdown complete")
@@ -747,27 +891,20 @@ job_service = JobService()
 
 async def register_background_job(
     user_id: UUID,
-    task_func: Union[Callable[[JobContext], Any], Callable[[JobContext], Awaitable[Any]]],
+    job_type: str,
     metadata: Optional[Dict[str, Any]] = None,
+    job_start_time: Optional[datetime] = None,
     db: Optional[Session] = None
 ) -> UUID:
     """
-    Convenience function to register and start a background job.
-    
-    Args:
-        user_id: User ID
-        task_func: Task function to execute
-        metadata: Initial metadata
-        db: Database session
-        
-    Returns:
-        Job ID
+    Convenience function to register a background job.
+    Job will be picked up by the daemon when ready.
     """
     return await job_service.register_job(
         user_id=user_id,
-        task_func=task_func,
+        job_type=job_type,
         metadata=metadata,
-        auto_start=True,
+        job_start_time=job_start_time,
         db=db
     )
 

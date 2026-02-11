@@ -44,6 +44,11 @@ class Settings(BaseSettings):
         default="https://api.anthropic.com/v1", alias="ANTHROPIC_BASE_URL"
     )
 
+    # Job Daemon Configuration
+    job_worker_num: int = Field(default=3, alias="JOB_WORKER_NUM")
+    job_poll_interval: int = Field(default=5, alias="JOB_POLL_INTERVAL")
+    job_worker_break_off_time: int = Field(default=30, alias="JOB_WORKER_BREAK_OFF_TIME")
+
     class Config:
         env_file = ".env"
         extra = "ignore"
