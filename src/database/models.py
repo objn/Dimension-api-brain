@@ -123,7 +123,9 @@ class Metadatas(Base):
     metadata_of = Column(UUID(as_uuid=True))
     metadata_json = Column("metadata", JSON)
     content_to_summarize = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     created_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
 
 

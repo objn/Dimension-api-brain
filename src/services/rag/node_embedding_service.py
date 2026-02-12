@@ -199,16 +199,16 @@ class NodeEmbeddingService:
         if not include_deleted:
             query = query.filter(Nodevector.deleted_at.is_(None))
         
-        chunks = query.order_by(Nodevector.node_vector_chuck_order).all()
+        chunks = query.order_by(Nodevector.node_vector_chunk_order).all()
         
         result = []
         for chunk in chunks:
             chunk_data = {
-                "chunk_id": str(chunk.node_vector_chuck_id),
-                "order": chunk.node_vector_chuck_order,
-                "content": chunk.node_content_md_chuck,
-                "content_hash": chunk.node_content_md_chuck_hash,
-                "chunk_type": "metadata" if chunk.node_vector_chuck_order == 0 else "content",
+                "chunk_id": str(chunk.node_vector_chunk_id),
+                "order": chunk.node_vector_chunk_order,
+                "content": chunk.node_content_md_chunk,
+                "content_hash": chunk.node_content_md_chunk_hash,
+                "chunk_type": "metadata" if chunk.node_vector_chunk_order == 0 else "content",
                 "created_at": chunk.created_at.isoformat() if chunk.created_at else None,
                 "updated_at": chunk.updated_at.isoformat() if chunk.updated_at else None,
                 "deleted_at": chunk.deleted_at.isoformat() if chunk.deleted_at else None
@@ -239,7 +239,7 @@ class NodeEmbeddingService:
             Chunk data or None
         """
         chunk = db.query(Nodevector).filter(
-            Nodevector.node_vector_chuck_id == chunk_id,
+            Nodevector.node_vector_chunk_id == chunk_id,
             Nodevector.deleted_at.is_(None)
         ).first()
         
@@ -247,12 +247,12 @@ class NodeEmbeddingService:
             return None
         
         result = {
-            "chunk_id": str(chunk.node_vector_chuck_id),
+            "chunk_id": str(chunk.node_vector_chunk_id),
             "node_id": str(chunk.node_id),
-            "order": chunk.node_vector_chuck_order,
-            "content": chunk.node_content_md_chuck,
-            "content_hash": chunk.node_content_md_chuck_hash,
-            "chunk_type": "metadata" if chunk.node_vector_chuck_order == 0 else "content",
+            "order": chunk.node_vector_chunk_order,
+            "content": chunk.node_content_md_chunk,
+            "content_hash": chunk.node_content_md_chunk_hash,
+            "chunk_type": "metadata" if chunk.node_vector_chunk_order == 0 else "content",
             "created_at": chunk.created_at.isoformat() if chunk.created_at else None
         }
         
@@ -409,7 +409,7 @@ class NodeEmbeddingService:
         if force_reembed:
             # Delete all and recreate
             return ChunkDiff(
-                to_delete=[v.node_vector_chuck_id for v in existing],
+                to_delete=[v.node_vector_chunk_id for v in existing],
                 to_create=new_chunks,
                 unchanged=[]
             )
@@ -417,10 +417,10 @@ class NodeEmbeddingService:
         # Build lookup by hash
         existing_by_hash: Dict[str, ExistingChunk] = {}
         for v in existing:
-            existing_by_hash[v.node_content_md_chuck_hash] = ExistingChunk(
-                chunk_id=v.node_vector_chuck_id,
-                order=v.node_vector_chuck_order,
-                content_hash=v.node_content_md_chuck_hash
+            existing_by_hash[v.node_content_md_chunk_hash] = ExistingChunk(
+                chunk_id=v.node_vector_chunk_id,
+                order=v.node_vector_chunk_order,
+                content_hash=v.node_content_md_chunk_hash
             )
         
         new_hashes = {c.content_hash for c in new_chunks}
@@ -429,8 +429,8 @@ class NodeEmbeddingService:
         # Determine what to delete (exists but not in new)
         to_delete = []
         for existing_chunk in existing:
-            if existing_chunk.node_content_md_chuck_hash not in new_hashes:
-                to_delete.append(existing_chunk.node_vector_chuck_id)
+            if existing_chunk.node_content_md_chunk_hash not in new_hashes:
+                to_delete.append(existing_chunk.node_vector_chunk_id)
         
         # Determine what to create (new or hash not found)
         to_create = []
@@ -512,7 +512,7 @@ class NodeEmbeddingService:
         # Soft delete removed chunks
         if diff.to_delete:
             db.query(Nodevector).filter(
-                Nodevector.node_vector_chuck_id.in_(diff.to_delete)
+                Nodevector.node_vector_chunk_id.in_(diff.to_delete)
             ).update(
                 {
                     Nodevector.deleted_at: now,
@@ -527,10 +527,10 @@ class NodeEmbeddingService:
         for chunk, embedding in zip(chunks, embeddings):
             vector = Nodevector(
                 node_id=node_id,
-                node_vector_chuck_id=uuid4(),
-                node_vector_chuck_order=chunk.order,
-                node_content_md_chuck=chunk.content,
-                node_content_md_chuck_hash=chunk.content_hash,
+                node_vector_chunk_id=uuid4(),
+                node_vector_chunk_order=chunk.order,
+                node_content_md_chunk=chunk.content,
+                node_content_md_chunk_hash=chunk.content_hash,
                 embedding=embedding,
                 created_at=now,
                 created_by=user_id,

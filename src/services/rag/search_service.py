@@ -67,10 +67,10 @@ class SearchService:
         sql = """
             SELECT 
                 nv.node_id,
-                nv."node_vector_chuck_id" as chunk_id,
-                nv."node_vector_chuck_order" as chunk_order,
-                nv."node_content_md_chuck" as content,
-                nv."node_content_md_chuck_hash" as content_hash,
+                nv."node_vector_chunk_id" as chunk_id,
+                nv."node_vector_chunk_order" as chunk_order,
+                nv."node_content_md_chunk" as content,
+                nv."node_content_md_chunk_hash" as content_hash,
                 n.node_name,
                 n.node_desc,
                 (1 - (nv.embedding <=> :query_embedding::vector)) as similarity
@@ -87,7 +87,7 @@ class SearchService:
         
         # Optional filters
         if not include_metadata_chunks:
-            sql += ' AND nv."node_vector_chuck_order" > 0'
+            sql += ' AND nv."node_vector_chunk_order" > 0'
         
         if user_id:
             sql += " AND n.created_by = :user_id"
@@ -156,9 +156,9 @@ class SearchService:
         
         sql = """
             SELECT 
-                "node_vector_chuck_id" as chunk_id,
-                "node_vector_chuck_order" as chunk_order,
-                "node_content_md_chuck" as content,
+                "node_vector_chunk_id" as chunk_id,
+                "node_vector_chunk_order" as chunk_order,
+                "node_content_md_chunk" as content,
                 (1 - (embedding <=> :query_embedding::vector)) as similarity
             FROM "NodeVector"
             WHERE node_id = :node_id
@@ -172,7 +172,7 @@ class SearchService:
         }
         
         if not include_metadata:
-            sql += ' AND "node_vector_chuck_order" > 0'
+            sql += ' AND "node_vector_chunk_order" > 0'
         
         sql += """
             ORDER BY similarity DESC
@@ -217,7 +217,7 @@ class SearchService:
         # Get metadata chunk (order=0) of source node
         source_vector = db.query(Nodevector).filter(
             Nodevector.node_id == node_id,
-            Nodevector.node_vector_chuck_order == 0,
+            Nodevector.node_vector_chunk_order == 0,
             Nodevector.deleted_at.is_(None)
         ).first()
         
@@ -237,7 +237,7 @@ class SearchService:
                 JOIN "Nodes" n ON nv.node_id = n.node_id
                 WHERE nv.node_id != :source_node_id
                 AND nv.deleted_at IS NULL
-                AND nv."node_vector_chuck_order" = 0
+                AND nv."node_vector_chunk_order" = 0
         """
         
         params = {
@@ -313,12 +313,12 @@ class SearchService:
                 n.node_id,
                 n.node_name,
                 n.node_desc,
-                nv."node_vector_chuck_id" as chunk_id,
-                nv."node_vector_chuck_order" as chunk_order,
-                nv."node_content_md_chuck" as content,
+                nv."node_vector_chunk_id" as chunk_id,
+                nv."node_vector_chunk_order" as chunk_order,
+                nv."node_content_md_chunk" as content,
                 CASE 
                     WHEN LOWER(n.node_name) LIKE LOWER(:query_pattern) THEN 1.0
-                    WHEN LOWER(nv."node_content_md_chuck") LIKE LOWER(:query_pattern) THEN 0.8
+                    WHEN LOWER(nv."node_content_md_chunk") LIKE LOWER(:query_pattern) THEN 0.8
                     ELSE 0.5
                 END as keyword_score
             FROM "NodeVector" nv
@@ -327,7 +327,7 @@ class SearchService:
             AND (
                 LOWER(n.node_name) LIKE LOWER(:query_pattern)
                 OR LOWER(n.node_desc) LIKE LOWER(:query_pattern)
-                OR LOWER(nv."node_content_md_chuck") LIKE LOWER(:query_pattern)
+                OR LOWER(nv."node_content_md_chunk") LIKE LOWER(:query_pattern)
             )
         """
         
