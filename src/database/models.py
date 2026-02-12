@@ -21,14 +21,14 @@ class Agents(Base):
     agent_desc = Column(Text)
     agent_prompt = Column(Text)
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
-    agent_profile_image = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
+    agent_profile_image = Column(UUID(as_uuid=True), ForeignKey('Files.file_id'))
 
     Files = relationship("Files", foreign_keys=[agent_profile_image])
     Users = relationship("Users", foreign_keys=[created_by])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
 class Conversations(Base):
@@ -38,12 +38,12 @@ class Conversations(Base):
     conversation_id = Column(UUID(as_uuid=True), primary_key=True)
     conversation_topic = Column(String(255))
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
     Users = relationship("Users", foreign_keys=[created_by])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
 class Files(Base):
@@ -55,10 +55,45 @@ class Files(Base):
     file_size = Column(Integer)
     mime_type = Column(String(255))
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     file_path = Column(String(255))
 
     Users = relationship("Users", foreign_keys=[created_by])
+
+
+class JobResults(Base):
+    """Model for JobResults table"""
+    __tablename__ = "JobResults"
+
+    job_result_id = Column(String(16), primary_key=True)
+
+
+
+class Jobtypes(Base):
+    """Model for JobTypes table"""
+    __tablename__ = "JobTypes"
+
+    Job_type_id = Column(String(255), primary_key=True)
+
+
+
+class Job(Base):
+    """Model for Jobs table"""
+    __tablename__ = "Jobs"
+
+    job_id = Column(UUID(as_uuid=True), primary_key=True)
+    job_result = Column(String(16), ForeignKey('JobResults.job_result_id'))
+    created_at = Column(DateTime)
+    created_by = Column(UUID(as_uuid=True))
+    updated_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True))
+    job_type = Column(String(255), ForeignKey('JobTypes.Job_type_id'))
+    job_start_time = Column(DateTime)
+    job_end_time = Column(DateTime)
+    job_actived = Column(Boolean)
+
+    JobResults = relationship("JobResults", foreign_keys=[job_result])
+    JobTypes = relationship("Jobtypes", foreign_keys=[job_type])
 
 
 class Messages(Base):
@@ -66,18 +101,18 @@ class Messages(Base):
     __tablename__ = "Messages"
 
     message_id = Column(UUID(as_uuid=True), primary_key=True)
-    conversation_id = Column(UUID(as_uuid=True))
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('Conversations.conversation_id'))
     message_content = Column(Text)
-    sender_role = Column(String(16))
+    sender_role = Column(String(16), ForeignKey('Roles.role_id'))
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
     conversation = relationship("Conversations", foreign_keys=[conversation_id])
     Users = relationship("Users", foreign_keys=[created_by])
     Roles = relationship("Roles", foreign_keys=[sender_role])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
 class Metadatas(Base):
@@ -86,43 +121,32 @@ class Metadatas(Base):
 
     metadata_id = Column(UUID(as_uuid=True), primary_key=True)
     metadata_of = Column(UUID(as_uuid=True))
-    metadata_json = Column("metadata", JSON)  # Map to 'metadata' column in DB
+    metadata_json = Column("metadata", JSON)
     content_to_summarize = Column(Text)
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
-    # Relationships
-    creator = relationship("Users", foreign_keys=[created_by])
-    updater = relationship("Users", foreign_keys=[updated_by])
-
-    Agents = relationship("Agents", foreign_keys=[metadata_of])
-    Conversations = relationship("Conversations", foreign_keys=[metadata_of])
-    Files = relationship("Files", foreign_keys=[metadata_of])
-    Nodes = relationship("Nodes", foreign_keys=[metadata_of])
-    Workspaces = relationship("Workspaces", foreign_keys=[metadata_of])
 
 
 class Nodevector(Base):
     """Model for NodeVector table"""
     __tablename__ = "NodeVector"
 
-    node_id = Column(UUID(as_uuid=True), primary_key=True)
-    node_content_md_chuck = Column(Text)
+    node_id = Column(UUID(as_uuid=True), ForeignKey('Nodes.node_id'), primary_key=True)
+    node_content_md_chunk = Column(Text)
     embedding = Column(Vector(1536))
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     deleted_at = Column(DateTime)
-    node_content_md_chuck_hash = Column(String(255))
-    node_vector_chuck_id = Column(UUID(as_uuid=True), primary_key=True)
-    node_vector_chuck_order = Column(Integer)
+    node_content_md_chunk_hash = Column(String(255))
+    node_vector_chunk_id = Column(UUID(as_uuid=True), primary_key=True)
+    node_vector_chunk_order = Column(Integer)
 
     Users = relationship("Users", foreign_keys=[created_by])
     node = relationship("Nodes", foreign_keys=[node_id])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
 class Nodes(Base):
@@ -137,12 +161,12 @@ class Nodes(Base):
     node_location_y = Column(Float)
     node_location_z = Column(Float)
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
     Users = relationship("Users", foreign_keys=[created_by])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
 class Relationpriorities(Base):
@@ -174,17 +198,6 @@ class Relations(Base):
     updated_at = Column(DateTime)
     updated_by = Column(UUID(as_uuid=True))
 
-    child = relationship("Agents", foreign_keys=[child_id])
-    child = relationship("Conversations", foreign_keys=[child_id])
-    child = relationship("Files", foreign_keys=[child_id])
-    child = relationship("Nodes", foreign_keys=[child_id])
-    child = relationship("Workspaces", foreign_keys=[child_id])
-    Users = relationship("Users", foreign_keys=[created_by])
-    parent = relationship("Workspaces", foreign_keys=[parent_id])
-    parent = relationship("Nodes", foreign_keys=[parent_id])
-    relation_priority = relationship("Relationpriorities", foreign_keys=[relation_priority_id])
-    relation_type = relationship("Relationtypes", foreign_keys=[relation_type_id])
-    Users = relationship("Users", foreign_keys=[updated_by])
 
 
 class Roles(Base):
@@ -219,35 +232,10 @@ class Workspaces(Base):
     workspace_name = Column(String(255))
     workspace_desc = Column(Text)
     created_at = Column(DateTime)
-    created_by = Column(UUID(as_uuid=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)
-    updated_by = Column(UUID(as_uuid=True))
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
     Users = relationship("Users", foreign_keys=[created_by])
-    Users = relationship("Users", foreign_keys=[updated_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
 
-class Job(Base):
-    """Model for Jobs table"""
-    __tablename__ = "Jobs"
-
-    job_id = Column(UUID(as_uuid=True), primary_key=True)
-    job_type = Column(String(255))
-    job_start_time = Column(DateTime)
-    job_end_time = Column(DateTime)
-    job_actived = Column(Boolean, default=False)
-    job_result = Column(String(16))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(UUID(as_uuid=True))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    updated_by = Column(UUID(as_uuid=True))
-
-    job_result_rel = relationship("JobResults", foreign_keys=[job_result])
-    Users = relationship("Users", foreign_keys=[created_by])
-    Users = relationship("Users", foreign_keys=[updated_by])
-
-class JobResults(Base):
-    """Model for JobResults table"""
-    __tablename__ = "JobResults"
-
-    job_result = Column(String(16), primary_key=True)
-    description = Column(Text)
