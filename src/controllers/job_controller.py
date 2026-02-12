@@ -114,6 +114,27 @@ async def get_all_jobs_with_metadata(
             detail=f"Error fetching jobs with metadata: {str(e)}"
         )
 
+@router.get(
+    "/active",
+    status_code=status.HTTP_200_OK,
+    summary="Get all active jobs",
+    description="Retrieve all active (PENDING or PROCESSING) jobs for the authenticated user"
+)
+async def get_active_jobs(
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get all active jobs for the current user"""
+    try:
+        active_jobs = job_service.get_active_jobs(user_id)
+        return success_response({
+            "count": len(active_jobs),
+            "jobs": active_jobs
+        })
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching active jobs: {str(e)}"
+        )
 
 @router.get(
     "/{job_id}",
@@ -762,29 +783,6 @@ async def delete_job(
 # ============================================================================
 # Service-based Job Management Endpoints
 # ============================================================================
-
-@router.get(
-    "/active",
-    status_code=status.HTTP_200_OK,
-    summary="Get all active jobs",
-    description="Retrieve all active (PENDING or PROCESSING) jobs for the authenticated user"
-)
-async def get_active_jobs(
-    user_id: UUID = Depends(get_current_user_id)
-):
-    """Get all active jobs for the current user"""
-    try:
-        active_jobs = job_service.get_active_jobs(user_id)
-        return success_response({
-            "count": len(active_jobs),
-            "jobs": active_jobs
-        })
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching active jobs: {str(e)}"
-        )
-
 
 @router.get(
     "/{job_id}/status",
