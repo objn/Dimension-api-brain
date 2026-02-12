@@ -1,32 +1,25 @@
 """
-Job Daemon - READ-ONLY background poller for scheduled jobs.
+Job Daemon - Lightweight background poller that signals JobService.
 
 Design Principles:
-    - READ-ONLY: Only queries the database, never writes to it
-    - Signals JobService to activate jobs (JobService does all DB writes)
+    - SIGNAL-ONLY: Only checks if PENDING jobs exist, never reads details or writes
+    - Sends a signal to JobService when ready jobs are detected
+    - JobService handles finding, deduplicating, and activating jobs
     - Respects worker_break_off_time when pool is full
     - Runs in a daemon thread, polls at JOB_POLL_INTERVAL
 
-Query Logic:
-    SELECT * FROM Jobs
-    WHERE job_result = 'PENDING'
-      AND job_start_time <= NOW()
-      AND job_end_time IS NULL
-    ORDER BY created_at ASC
-
 Flow:
-    1. Poll DB for ready jobs (read-only)
-    2. For each job, call job_service.activate_job(job_id)
-    3. If response.worker_break_off_time > 0, sleep that duration and stop loop
-    4. Otherwise continue to next job
-    5. Sleep JOB_POLL_INTERVAL and repeat
+    1. Poll DB: EXISTS any PENDING job where job_start_time <= NOW()?
+    2. If yes, call job_service.process_ready_jobs()
+    3. If response.worker_break_off_time > 0, sleep that duration
+    4. Otherwise sleep JOB_POLL_INTERVAL and repeat
 """
 import threading
 import time
 import logging
 from datetime import datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from src.database.models import Job
 from src.database import get_silent_db
@@ -37,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 class JobDaemon:
     """
-    Background daemon that polls for ready jobs and signals JobService.
+    Background daemon that signals JobService when ready jobs exist.
     
-    READ-ONLY: This daemon never modifies the database.
-    All status changes go through JobService.activate_job().
+    SIGNAL-ONLY: This daemon only checks for existence of ready jobs.
+    All querying, deduplication, and activation go through JobService.
     """
     
     _instance = None
@@ -63,7 +56,7 @@ class JobDaemon:
         self._started_at: datetime = None
         self._last_poll_at: datetime = None
         self._total_polls: int = 0
-        self._total_jobs_activated: int = 0
+        self._total_signals_sent: int = 0
         
         if self._verbose:
             logger.info(f"JobDaemon initialized: poll_interval={self._poll_interval}s")
@@ -114,7 +107,7 @@ class JobDaemon:
             "started_at": self._started_at.isoformat() if self._started_at else None,
             "last_poll_at": self._last_poll_at.isoformat() if self._last_poll_at else None,
             "total_polls": self._total_polls,
-            "total_jobs_activated": self._total_jobs_activated,
+            "total_signals_sent": self._total_signals_sent,
             "thread_alive": self._thread.is_alive() if self._thread else False
         }
     
@@ -143,76 +136,61 @@ class JobDaemon:
     
     def _poll_once(self) -> int:
         """
-        Single poll iteration: query ready jobs, signal JobService.
+        Single poll iteration: check if ready jobs exist, signal JobService.
         
-        READ-ONLY: Only reads from database.
+        Only checks existence (COUNT/EXISTS), does NOT read job details.
         
         Returns:
             worker_break_off_time if workers are full, 0 otherwise
         """
-        # Lazy import to avoid circular dependency
         from src.services.job_service import job_service
         
         self._last_poll_at = datetime.utcnow()
         self._total_polls += 1
         
-        ready_jobs = self._find_ready_jobs()
+        has_ready = self._has_ready_jobs()
         
-        if not ready_jobs:
+        if not has_ready:
             return 0
         
         if self._verbose:
-            logger.info(f"Found {len(ready_jobs)} ready job(s)")
+            logger.info("Detected ready job(s), signaling JobService")
         
-        for job_id in ready_jobs:
-            if not self._running:
-                break
-            
-            result = job_service.activate_job(job_id)
-            
-            if result.worker_break_off_time > 0:
-                # Pool is full - stop processing more jobs and return break_off_time
-                return result.worker_break_off_time
-            
-            if result.activated:
-                self._total_jobs_activated += 1
-                logger.info(f"Job {job_id} activated")
-            elif self._verbose:
-                logger.debug(f"Job {job_id} not activated: {result.reason}")
+        self._total_signals_sent += 1
         
-        return 0
+        # Signal JobService to handle everything: find, dedup, activate
+        result = job_service.process_ready_jobs()
+        
+        return result.worker_break_off_time
     
-    def _find_ready_jobs(self) -> list:
+    def _has_ready_jobs(self) -> bool:
         """
-        Query DB for jobs ready to run (READ-ONLY).
+        Check if any PENDING jobs are ready to run (lightweight EXISTS query).
         
         Criteria:
             - job_result = 'PENDING'
             - job_start_time <= current_time
             - job_end_time IS NULL
         
-        Sorted by created_at ASC (oldest first / FIFO).
-        
         Returns:
-            List of job_id UUIDs
+            True if at least one ready job exists
         """
         db_gen = get_silent_db()
         try:
             db = next(db_gen)
             now = datetime.utcnow()
             
-            jobs = db.query(Job.job_id).filter(
+            count = db.query(func.count(Job.job_id)).filter(
                 Job.job_result == "PENDING",
                 Job.job_start_time <= now,
-                Job.job_end_time.is_(None)
-            ).order_by(
-                Job.created_at.asc()
-            ).all()
+                Job.job_end_time.is_(None),
+                Job.job_actived == False
+            ).scalar()
             
-            return [row.job_id for row in jobs]
+            return count > 0
         except Exception as e:
-            logger.error(f"Error querying ready jobs: {e}", exc_info=True)
-            return []
+            logger.error(f"Error checking ready jobs: {e}", exc_info=True)
+            return False
         finally:
             try:
                 next(db_gen)

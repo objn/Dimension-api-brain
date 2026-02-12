@@ -1,15 +1,18 @@
 """
 Job Service for Background Processing Management.
 
-Architecture v2 - Daemon-driven:
+Architecture v3 - Signal-driven:
     - register_job() only creates DB record (PENDING)
-    - JobDaemon polls DB for ready jobs and calls activate_job()
+    - JobDaemon detects ready jobs and sends a signal to JobService
+    - process_ready_jobs() finds, deduplicates, and activates jobs
     - activate_job() atomically claims job (PENDING -> PROCESSING) and submits to thread pool
+    - Deduplication: same (job_type, created_by, job_actived=False) → keep latest, SKIP older
     - Race condition prevention via DB-level atomic update
     - Returns worker_break_off_time when pool is full
 
 Status Flow:
     PENDING -> PROCESSING -> SUCCESS / FAILED / INTERRUPTED / CANCELLED
+    PENDING -> SKIP (deduplicated older duplicates)
 """
 import asyncio
 import threading
@@ -42,6 +45,7 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
     INTERRUPTED = "INTERRUPTED"
     CANCELLED = "CANCELLED"
+    SKIP = "SKIP"
 
 
 @dataclass
@@ -116,10 +120,10 @@ class JobService:
     """
     Service for managing background jobs with status tracking.
     
-    v2 Architecture:
+    v3 Architecture (Signal-driven):
         - register_job() -> creates DB record only (PENDING)
+        - process_ready_jobs() -> find, dedup, activate (called on daemon signal)
         - activate_job() -> atomically claims + submits to thread pool
-        - JobDaemon calls activate_job() when job is ready
         - Task functions come from TaskRegistry
     """
     
@@ -208,14 +212,102 @@ class JobService:
         return job_id
     
     # =========================================================================
-    # Job Activation (called by Daemon)
+    # Job Processing (called by Daemon signal)
+    # =========================================================================
+
+    def process_ready_jobs(self) -> ActivateResult:
+        """
+        Find, deduplicate, and activate all ready jobs.
+        
+        Called by JobDaemon when it detects PENDING jobs exist.
+        JobService owns the entire flow:
+            1. Query ready jobs from DB
+            2. Deduplicate (same job_type + created_by + job_actived=False → SKIP older)
+            3. Activate each remaining job
+        
+        Returns:
+            ActivateResult - if workers are full, includes worker_break_off_time
+        """
+        # Step 1: Find ready jobs
+        ready_job_ids = self._find_ready_jobs()
+        
+        if not ready_job_ids:
+            return ActivateResult(activated=False, reason="no_ready_jobs")
+        
+        logger.info(f"Found {len(ready_job_ids)} ready job(s)")
+        
+        # Step 2: Deduplicate
+        ready_job_ids = self._deduplicate_pending_jobs(ready_job_ids)
+        
+        if not ready_job_ids:
+            return ActivateResult(activated=False, reason="all_deduplicated")
+        
+        logger.info(f"After dedup: {len(ready_job_ids)} job(s) to activate")
+        
+        # Step 3: Activate each job
+        last_result = ActivateResult(activated=False, reason="no_jobs_processed")
+        
+        for job_id in ready_job_ids:
+            result = self.activate_job(job_id)
+            last_result = result
+            
+            if result.worker_break_off_time > 0:
+                # Pool is full - stop and return break_off_time
+                return result
+            
+            if result.activated:
+                logger.info(f"Job {job_id} activated")
+            else:
+                logger.debug(f"Job {job_id} not activated: {result.reason}")
+        
+        return last_result
+
+    def _find_ready_jobs(self) -> list:
+        """
+        Query DB for jobs ready to run.
+        
+        Criteria:
+            - job_result = 'PENDING'
+            - job_start_time <= current_time
+            - job_end_time IS NULL
+        
+        Sorted by created_at ASC (oldest first / FIFO).
+        
+        Returns:
+            List of job_id UUIDs
+        """
+        db_gen = get_silent_db()
+        try:
+            db = next(db_gen)
+            now = datetime.utcnow()
+            
+            jobs = db.query(Job.job_id).filter(
+                Job.job_result == JobStatus.PENDING.value,
+                Job.job_start_time <= now,
+                Job.job_end_time.is_(None)
+            ).order_by(
+                Job.created_at.asc()
+            ).all()
+            
+            return [row.job_id for row in jobs]
+        except Exception as e:
+            logger.error(f"Error querying ready jobs: {e}", exc_info=True)
+            return []
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+
+    # =========================================================================
+    # Job Activation (called internally by process_ready_jobs)
     # =========================================================================
     
     def activate_job(self, job_id: UUID) -> ActivateResult:
         """
         Activate a pending job: atomically claim it and submit to thread pool.
         
-        Called by JobDaemon when a job is ready to run.
+        Called internally by process_ready_jobs().
         
         Race Condition Prevention:
             Uses DB-level WHERE job_result = 'PENDING' to atomically claim.
@@ -725,7 +817,8 @@ class JobService:
                 
                 terminal_statuses = [
                     JobStatus.SUCCESS, JobStatus.FAILED,
-                    JobStatus.INTERRUPTED, JobStatus.CANCELLED
+                    JobStatus.INTERRUPTED, JobStatus.CANCELLED,
+                    JobStatus.SKIP
                 ]
                 if status in terminal_statuses:
                     job.job_end_time = now
@@ -800,6 +893,103 @@ class JobService:
             )
             db.add(metadata_record)
     
+    # =========================================================================
+    # Deduplication (called internally by process_ready_jobs)
+    # =========================================================================
+
+    def _deduplicate_pending_jobs(self, ready_job_ids: list) -> list:
+        """
+        Deduplicate PENDING jobs with same (job_type, created_by, job_actived=False).
+
+        Among duplicate groups, keep only the LATEST job (by created_at DESC)
+        and mark older ones as SKIP.
+
+        Args:
+            ready_job_ids: List of job_id UUIDs that are ready to run
+
+        Returns:
+            Filtered list of job_ids with duplicates removed (only latest kept)
+        """
+        if not ready_job_ids:
+            return []
+
+        db_gen = get_db()
+        try:
+            db = next(db_gen)
+            now = datetime.utcnow()
+
+            # Load all ready jobs with their grouping info
+            jobs = db.query(Job).filter(
+                Job.job_id.in_(ready_job_ids),
+                Job.job_result == JobStatus.PENDING.value,
+                Job.job_actived == False
+            ).order_by(
+                Job.created_at.desc()
+            ).all()
+
+            if not jobs:
+                return list(ready_job_ids)
+
+            # Group by (job_type, created_by)
+            groups: Dict[tuple, list] = {}
+            for job in jobs:
+                key = (job.job_type, str(job.created_by))
+                if key not in groups:
+                    groups[key] = []
+                groups[key].append(job)
+
+            pass_job_ids = set()
+            keep_job_ids = set()
+
+            for key, group_jobs in groups.items():
+                if len(group_jobs) <= 1:
+                    # No duplicates, keep the single job
+                    keep_job_ids.add(group_jobs[0].job_id)
+                    continue
+
+                # Already sorted by created_at DESC, first is latest
+                latest = group_jobs[0]
+                keep_job_ids.add(latest.job_id)
+
+                # Mark older duplicates as SKIP
+                older_ids = [j.job_id for j in group_jobs[1:]]
+                pass_job_ids.update(older_ids)
+
+                logger.info(
+                    f"Dedup: job_type={key[0]}, user={key[1]}: "
+                    f"keeping {latest.job_id}, passing {len(older_ids)} older job(s)"
+                )
+
+            # Bulk update older duplicates to SKIP
+            if pass_job_ids:
+                db.execute(
+                    update(Job)
+                    .where(
+                        Job.job_id.in_(list(pass_job_ids)),
+                        Job.job_result == JobStatus.PENDING.value
+                    )
+                    .values(
+                        job_result=JobStatus.SKIP.value,
+                        job_end_time=now,
+                        updated_at=now
+                    )
+                )
+                db.commit()
+                logger.info(f"Marked {len(pass_job_ids)} duplicate job(s) as SKIP")
+
+            # Return filtered list: only non-duplicated + latest from each group
+            # Preserve original order from ready_job_ids
+            return [jid for jid in ready_job_ids if jid not in pass_job_ids]
+
+        except Exception as e:
+            logger.error(f"Error deduplicating jobs: {e}", exc_info=True)
+            return list(ready_job_ids)  # On error, return original list
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+
     # =========================================================================
     # Orphan Recovery (on startup)
     # =========================================================================
