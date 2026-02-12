@@ -136,6 +136,76 @@ async def get_active_jobs(
             detail=f"Error fetching active jobs: {str(e)}"
         )
 
+
+# ============================================================================
+# Daemon Control Endpoints (Debug)
+# ============================================================================
+
+@router.get(
+    "/daemon/status",
+    status_code=status.HTTP_200_OK,
+    summary="Get daemon status",
+    description="Get the current status of the job daemon (for debugging)"
+)
+async def get_daemon_status(
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Get daemon status including running state, poll stats, etc."""
+    from src.services.job_daemon import job_daemon
+    
+    return success_response(job_daemon.get_status())
+
+
+@router.post(
+    "/daemon/start",
+    status_code=status.HTTP_200_OK,
+    summary="Start daemon",
+    description="Start the job daemon if not already running (for debugging)"
+)
+async def start_daemon(
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Start the job daemon."""
+    from src.services.job_daemon import job_daemon
+    
+    if job_daemon.is_running:
+        return success_response({
+            "message": "Daemon is already running",
+            "started": False
+        })
+    
+    job_daemon.start()
+    return success_response({
+        "message": "Daemon started",
+        "started": True
+    })
+
+
+@router.post(
+    "/daemon/stop",
+    status_code=status.HTTP_200_OK,
+    summary="Stop daemon",
+    description="Stop the job daemon gracefully (for debugging)"
+)
+async def stop_daemon(
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Stop the job daemon."""
+    from src.services.job_daemon import job_daemon
+    
+    if not job_daemon.is_running:
+        return success_response({
+            "message": "Daemon is not running",
+            "stopped": False
+        })
+    
+    job_daemon.stop()
+    return success_response({
+        "message": "Daemon stopped",
+        "stopped": True
+    })
+
+
 @router.get(
     "/{job_id}",
     status_code=status.HTTP_200_OK,

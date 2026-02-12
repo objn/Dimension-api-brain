@@ -60,6 +60,10 @@ class JobDaemon:
         self._running = False
         self._thread: threading.Thread = None
         self._stop_event = threading.Event()
+        self._started_at: datetime = None
+        self._last_poll_at: datetime = None
+        self._total_polls: int = 0
+        self._total_jobs_activated: int = 0
         
         if self._verbose:
             logger.info(f"JobDaemon initialized: poll_interval={self._poll_interval}s")
@@ -72,6 +76,7 @@ class JobDaemon:
         
         self._running = True
         self._stop_event.clear()
+        self._started_at = datetime.utcnow()
         self._thread = threading.Thread(
             target=self._poll_loop,
             name="job-daemon",
@@ -88,11 +93,30 @@ class JobDaemon:
         logger.info("Stopping JobDaemon...")
         self._running = False
         self._stop_event.set()
+        self._started_at = None
         
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10)
         
         logger.info("JobDaemon stopped")
+    
+    @property
+    def is_running(self) -> bool:
+        """Check if daemon is currently running."""
+        return self._running and self._thread is not None and self._thread.is_alive()
+    
+    def get_status(self) -> dict:
+        """Get daemon status information for debugging."""
+        return {
+            "running": self.is_running,
+            "poll_interval_seconds": self._poll_interval,
+            "verbose": self._verbose,
+            "started_at": self._started_at.isoformat() if self._started_at else None,
+            "last_poll_at": self._last_poll_at.isoformat() if self._last_poll_at else None,
+            "total_polls": self._total_polls,
+            "total_jobs_activated": self._total_jobs_activated,
+            "thread_alive": self._thread.is_alive() if self._thread else False
+        }
     
     def _poll_loop(self) -> None:
         """Main polling loop - runs in daemon thread."""
@@ -129,6 +153,9 @@ class JobDaemon:
         # Lazy import to avoid circular dependency
         from src.services.job_service import job_service
         
+        self._last_poll_at = datetime.utcnow()
+        self._total_polls += 1
+        
         ready_jobs = self._find_ready_jobs()
         
         if not ready_jobs:
@@ -148,6 +175,7 @@ class JobDaemon:
                 return result.worker_break_off_time
             
             if result.activated:
+                self._total_jobs_activated += 1
                 logger.info(f"Job {job_id} activated")
             elif self._verbose:
                 logger.debug(f"Job {job_id} not activated: {result.reason}")

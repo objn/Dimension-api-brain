@@ -9,6 +9,7 @@
 ## Table of Contents
 
 1. [Job API](#1-job-api)
+   - [1.14 Daemon Control (Debug)](#114-daemon-control-debug)
 2. [Daemon & Worker Pool Behavior Tests](#2-daemon--worker-pool-behavior-tests)
 
 ---
@@ -429,6 +430,96 @@ Authorization: Bearer <TOKEN>
 - [ ] Job and metadata deleted from DB
 - [ ] `404` on subsequent GET
 - [ ] `403` if not owner
+
+---
+
+### 1.14 Daemon Control (Debug)
+
+#### 1.14.1 Get Daemon Status
+
+> **Proof:** ดู สถานะของ daemon รวมถึง poll stats
+
+```
+GET /llm/jobs/daemon/status
+Authorization: Bearer <TOKEN>
+```
+
+**Expected Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "running": true,
+    "poll_interval_seconds": 5,
+    "verbose": false,
+    "started_at": "2026-02-13T10:00:00.000000",
+    "last_poll_at": "2026-02-13T10:01:25.123456",
+    "total_polls": 17,
+    "total_jobs_activated": 3,
+    "thread_alive": true
+  }
+}
+```
+
+**Proof checklist:**
+- [ ] `running` = `true` เมื่อ daemon กำลังทำงาน
+- [ ] `started_at` แสดงเวลาที่ daemon เริ่ม
+- [ ] `total_polls` เพิ่มขึ้นทุกครั้งที่ daemon poll
+- [ ] `total_jobs_activated` นับจำนวน jobs ที่ถูก activate
+
+---
+
+#### 1.14.2 Stop Daemon
+
+> **Proof:** หยุด daemon เพื่อ debug (jobs จะไม่ถูก activate อัตโนมัติ)
+
+```
+POST /llm/jobs/daemon/stop
+Authorization: Bearer <TOKEN>
+```
+
+**Expected Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Daemon stopped",
+    "stopped": true
+  }
+}
+```
+
+**Proof checklist:**
+- [ ] `stopped` = `true` เมื่อ daemon หยุดสำเร็จ
+- [ ] `stopped` = `false` ถ้า daemon ไม่ได้รัน
+- [ ] หลัง stop, jobs ที่ `PENDING` จะไม่ transition เป็น `PROCESSING`
+
+---
+
+#### 1.14.3 Start Daemon
+
+> **Proof:** เริ่ม daemon ใหม่หลังจาก stop
+
+```
+POST /llm/jobs/daemon/start
+Authorization: Bearer <TOKEN>
+```
+
+**Expected Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Daemon started",
+    "started": true
+  }
+}
+```
+
+**Proof checklist:**
+- [ ] `started` = `true` เมื่อ daemon เริ่มสำเร็จ
+- [ ] `started` = `false` ถ้า daemon รันอยู่แล้ว
+- [ ] หลัง start, daemon จะ poll และ activate jobs ตามปกติ
 
 ---
 
