@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     job_worker_num: int = Field(default=3, alias="JOB_WORKER_NUM")
     job_poll_interval: int = Field(default=5, alias="JOB_POLL_INTERVAL")
     job_worker_break_off_time: int = Field(default=30, alias="JOB_WORKER_BREAK_OFF_TIME")
+    job_daemon_verbose: bool = Field(default=False, alias="JOB_DAEMON_VERBOSE")
 
     class Config:
         env_file = ".env"

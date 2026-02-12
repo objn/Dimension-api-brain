@@ -29,7 +29,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from src.database.models import Job
-from src.database import get_db
+from src.database import get_silent_db
 from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -56,11 +56,13 @@ class JobDaemon:
             return
         self._initialized = True
         self._poll_interval = settings.job_poll_interval
+        self._verbose = settings.job_daemon_verbose
         self._running = False
         self._thread: threading.Thread = None
         self._stop_event = threading.Event()
         
-        logger.info(f"JobDaemon initialized: poll_interval={self._poll_interval}s")
+        if self._verbose:
+            logger.info(f"JobDaemon initialized: poll_interval={self._poll_interval}s")
     
     def start(self) -> None:
         """Start the daemon polling thread."""
@@ -94,7 +96,8 @@ class JobDaemon:
     
     def _poll_loop(self) -> None:
         """Main polling loop - runs in daemon thread."""
-        logger.info("JobDaemon poll loop started")
+        if self._verbose:
+            logger.info("JobDaemon poll loop started")
         
         while self._running and not self._stop_event.is_set():
             try:
@@ -102,7 +105,8 @@ class JobDaemon:
                 
                 if break_off > 0:
                     # Workers are full, wait break_off_time before next poll
-                    logger.info(f"Workers full, sleeping {break_off}s (break_off_time)")
+                    if self._verbose:
+                        logger.info(f"Workers full, sleeping {break_off}s (break_off_time)")
                     self._stop_event.wait(timeout=break_off)
                 else:
                     # Normal interval
@@ -130,7 +134,8 @@ class JobDaemon:
         if not ready_jobs:
             return 0
         
-        logger.info(f"Found {len(ready_jobs)} ready job(s)")
+        if self._verbose:
+            logger.info(f"Found {len(ready_jobs)} ready job(s)")
         
         for job_id in ready_jobs:
             if not self._running:
@@ -143,9 +148,9 @@ class JobDaemon:
                 return result.worker_break_off_time
             
             if result.activated:
-                logger.info(f"Daemon: Job {job_id} activated successfully")
-            else:
-                logger.debug(f"Daemon: Job {job_id} not activated: {result.reason}")
+                logger.info(f"Job {job_id} activated")
+            elif self._verbose:
+                logger.debug(f"Job {job_id} not activated: {result.reason}")
         
         return 0
     
@@ -163,7 +168,7 @@ class JobDaemon:
         Returns:
             List of job_id UUIDs
         """
-        db_gen = get_db()
+        db_gen = get_silent_db()
         try:
             db = next(db_gen)
             now = datetime.utcnow()

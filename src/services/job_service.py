@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import update
 
 from src.database.models import Job, Metadatas
-from src.database import get_db
+from src.database import get_db, get_silent_db
 from src.config.settings import settings
 
 # Configure logging
@@ -814,7 +814,7 @@ class JobService:
         Returns:
             Number of recovered jobs
         """
-        db_gen = get_db()
+        db_gen = get_silent_db()
         try:
             db = next(db_gen)
             now = datetime.utcnow()
