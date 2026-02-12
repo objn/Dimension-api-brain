@@ -8,8 +8,7 @@ from src.controllers import (
     conversation_router, 
     metadata_router, 
     example_gen_router, 
-    job_router,
-    node_embedding_router
+    job_router
 )
 from src.config import settings
 
@@ -96,7 +95,6 @@ def create_app() -> FastAPI:
     app.include_router(metadata_router)
     app.include_router(example_gen_router)
     app.include_router(job_router)
-    app.include_router(node_embedding_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)

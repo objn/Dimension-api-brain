@@ -20,7 +20,6 @@ from .types import (
 from .chunking import ChunkingService, chunking_service
 from .embedding import EmbeddingService, embedding_service
 from .node_embedding_service import NodeEmbeddingService, node_embedding_service
-from .search_service import SearchService, search_service
 
 __all__ = [
     # Types & Constants
@@ -45,6 +44,4 @@ __all__ = [
     "embedding_service",
     "NodeEmbeddingService",
     "node_embedding_service",
-    "SearchService",
-    "search_service",
 ]
