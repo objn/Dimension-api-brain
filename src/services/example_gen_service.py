@@ -315,11 +315,8 @@ Important:
             Dictionary with execution result
         """
         try:
-            # Remove newlines from query before execution
-            clean_query = insert_query.replace('\n', ' ').replace('\r', ' ')
-            
             # Normalize query for validation
-            query_upper = clean_query.strip().upper()
+            query_upper = insert_query.strip().upper()
             
             # Security check: Only allow INSERT statements
             if not query_upper.startswith("INSERT"):
