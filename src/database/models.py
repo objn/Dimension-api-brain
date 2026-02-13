@@ -44,6 +44,7 @@ class Conversations(Base):
 
     Users = relationship("Users", foreign_keys=[created_by])
     Users_2 = relationship("Users", foreign_keys=[updated_by])
+    messages = relationship("Messages", foreign_keys="Messages.conversation_id", back_populates="conversation")
 
 
 class Files(Base):
@@ -109,7 +110,7 @@ class Messages(Base):
     updated_at = Column(DateTime)
     updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
 
-    conversation = relationship("Conversations", foreign_keys=[conversation_id])
+    conversation = relationship("Conversations", foreign_keys=[conversation_id], back_populates="messages")
     Users = relationship("Users", foreign_keys=[created_by])
     Roles = relationship("Roles", foreign_keys=[sender_role])
     Users_2 = relationship("Users", foreign_keys=[updated_by])
