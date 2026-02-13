@@ -215,6 +215,43 @@ class JobService:
     # Job Processing (called by Daemon signal)
     # =========================================================================
 
+    def signal_ready_jobs_exist(self) -> None:
+        """
+        Simple signal handler for daemon: process ready jobs without worker management.
+        
+        This method is called by JobDaemon when it detects ready jobs exist.
+        Unlike process_ready_jobs(), this doesn't respect worker limits or return break_off_time.
+        """
+        try:
+            # Step 1: Find ready jobs
+            ready_job_ids = self._find_ready_jobs()
+            
+            if not ready_job_ids:
+                return
+            
+            logger.info(f"Daemon signal: Found {len(ready_job_ids)} ready job(s)")
+            
+            # Step 2: Deduplicate
+            ready_job_ids = self._deduplicate_pending_jobs(ready_job_ids)
+            
+            if not ready_job_ids:
+                logger.info("Daemon signal: All jobs deduplicated")
+                return
+            
+            logger.info(f"Daemon signal: After dedup: {len(ready_job_ids)} job(s) to activate")
+            
+            # Step 3: Activate each job (without worker break_off_time checks)
+            for job_id in ready_job_ids:
+                result = self.activate_job(job_id)
+                
+                if result.activated:
+                    logger.info(f"Job {job_id} activated")
+                else:
+                    logger.debug(f"Job {job_id} not activated: {result.reason}")
+                    
+        except Exception as e:
+            logger.error(f"Error in signal_ready_jobs_exist: {e}", exc_info=True)
+
     def process_ready_jobs(self) -> ActivateResult:
         """
         Find, deduplicate, and activate all ready jobs.

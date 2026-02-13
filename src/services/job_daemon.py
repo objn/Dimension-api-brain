@@ -3,16 +3,15 @@ Job Daemon - Lightweight background poller that signals JobService.
 
 Design Principles:
     - SIGNAL-ONLY: Only checks if PENDING jobs exist, never reads details or writes
-    - Sends a signal to JobService when ready jobs are detected
+    - Sends a simple signal to JobService when ready jobs are detected
     - JobService handles finding, deduplicating, and activating jobs
-    - Respects worker_break_off_time when pool is full
+    - No worker management to prevent multiple trigger issues
     - Runs in a daemon thread, polls at JOB_POLL_INTERVAL
 
 Flow:
     1. Poll DB: EXISTS any PENDING job where job_start_time <= NOW()?
-    2. If yes, call job_service.process_ready_jobs()
-    3. If response.worker_break_off_time > 0, sleep that duration
-    4. Otherwise sleep JOB_POLL_INTERVAL and repeat
+    2. If yes, call job_service.signal_ready_jobs_exist()
+    3. Sleep JOB_POLL_INTERVAL and repeat
 """
 import threading
 import time
@@ -118,30 +117,22 @@ class JobDaemon:
         
         while self._running and not self._stop_event.is_set():
             try:
-                break_off = self._poll_once()
+                self._poll_once()
                 
-                if break_off > 0:
-                    # Workers are full, wait break_off_time before next poll
-                    if self._verbose:
-                        logger.info(f"Workers full, sleeping {break_off}s (break_off_time)")
-                    self._stop_event.wait(timeout=break_off)
-                else:
-                    # Normal interval
-                    self._stop_event.wait(timeout=self._poll_interval)
+                # Always sleep normal interval - no worker management
+                self._stop_event.wait(timeout=self._poll_interval)
                     
             except Exception as e:
                 logger.error(f"JobDaemon poll error: {e}", exc_info=True)
                 # Sleep before retrying to avoid tight error loops
                 self._stop_event.wait(timeout=self._poll_interval)
     
-    def _poll_once(self) -> int:
+    def _poll_once(self) -> None:
         """
         Single poll iteration: check if ready jobs exist, signal JobService.
         
         Only checks existence (COUNT/EXISTS), does NOT read job details.
-        
-        Returns:
-            worker_break_off_time if workers are full, 0 otherwise
+        No worker management - just sends simple signal to JobService.
         """
         from src.services.job_service import job_service
         
@@ -151,7 +142,7 @@ class JobDaemon:
         has_ready = self._has_ready_jobs()
         
         if not has_ready:
-            return 0
+            return
         
         if self._verbose:
             logger.info("Detected ready job(s), signaling JobService")
@@ -159,9 +150,7 @@ class JobDaemon:
         self._total_signals_sent += 1
         
         # Signal JobService to handle everything: find, dedup, activate
-        result = job_service.process_ready_jobs()
-        
-        return result.worker_break_off_time
+        job_service.signal_ready_jobs_exist()
     
     def _has_ready_jobs(self) -> bool:
         """
