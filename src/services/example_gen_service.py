@@ -315,8 +315,11 @@ Important:
             Dictionary with execution result
         """
         try:
+            # Remove newlines from query before execution
+            clean_query = insert_query.replace('\n', ' ').replace('\r', ' ')
+            
             # Normalize query for validation
-            query_upper = insert_query.strip().upper()
+            query_upper = clean_query.strip().upper()
             
             # Security check: Only allow INSERT statements
             if not query_upper.startswith("INSERT"):
@@ -353,7 +356,7 @@ Important:
                     }
             
             # Execute the INSERT query
-            result = self.db.execute(text(insert_query))
+            result = self.db.execute(text(clean_query))
             self.db.commit()
             
             # Get number of inserted records
