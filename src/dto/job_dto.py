@@ -17,6 +17,28 @@ class JobType(str, Enum):
     EMBEDDING = "node_content_embedding"
 
 
+class JobHandleAction(str, Enum):
+    """Actions for handling jobs"""
+    START = "start"
+    RESTART = "restart" 
+    STOP = "stop"
+
+
+class JobHandleRequest(BaseModel):
+    """Request body for handling jobs (start/restart/stop)"""
+    handleJobTo: JobHandleAction = Field(..., description="Action to perform on the job")
+    reason: Optional[str] = Field(None, description="Optional reason for the action")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "handleJobTo": "start",
+                "job_id": "550e8400-e29b-41d4-a716-446655440000",
+                "reason": "User requested start"
+            }
+        }
+
+
 class JobCreateRequest(BaseModel):
     """Request body for creating a job with metadata"""
     job_type: JobType = Field(..., description="Type of the job")
