@@ -353,7 +353,7 @@ Important:
                     }
             
             # Execute the INSERT query
-            result = self.db.execute(text(clean_query))
+            result = self.db.execute(text(insert_query))
             self.db.commit()
             
             # Get number of inserted records
