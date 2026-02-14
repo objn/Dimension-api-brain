@@ -36,9 +36,13 @@ class ConversationRepository(BaseRepository[Conversations]):
         """Get the message repository for this conversation"""
         return MessageRepository(self.db)
     
-    def find_all_sorted(self, sort_by: str = "updated_at", sort_order: str = "desc", limit: Optional[int] = None) -> List[Conversations]:
-        """Find all conversations with sorting"""
+    def find_all_sorted(self, sort_by: str = "updated_at", sort_order: str = "desc", limit: Optional[int] = None, user_id: Optional[UUID] = None) -> List[Conversations]:
+        """Find all conversations with sorting and optional user filter"""
         query = self.db.query(Conversations)
+        
+        # Filter by user_id if provided
+        if user_id:
+            query = query.filter(Conversations.created_by == user_id)
         
         # Get the column to sort by
         if hasattr(Conversations, sort_by):

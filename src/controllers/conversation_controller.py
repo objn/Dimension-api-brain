@@ -57,22 +57,24 @@ router = APIRouter(
     "",
     status_code=status.HTTP_200_OK,
     summary="Get all conversations",
-    description="Retrieve all conversations using ORM"
+    description="Retrieve all conversations for the current user using ORM"
 )
 async def get_all_conversations(
     limit: Optional[int] = None,
     sort_by: Optional[str] = "updated_at",
     sort_order: Optional[str] = "desc",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get all conversations - uses ORM query"""
+    """Get all conversations for the current user - uses ORM query"""
     try:
         repo = ConversationRepository(db)
 
         conversations = repo.find_all_sorted(
             sort_by=sort_by,
             sort_order=sort_order,
-            limit=limit
+            limit=limit,
+            user_id=current_user_id
         )
 
         result = ConversationListResponse(
@@ -90,15 +92,16 @@ async def get_all_conversations(
     "/{conversation_id}",
     status_code=status.HTTP_200_OK,
     summary="Get conversation by ID",
-    description="Retrieve a conversation by its ID using ORM"
+    description="Retrieve a conversation by its ID for the current user using ORM"
 )
 async def get_conversation_by_id(
     conversation_id: UUID,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "asc",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get conversation by ID - uses ORM query"""
+    """Get conversation by ID for the current user - uses ORM query"""
     try:
         repo = ConversationRepository(db)
         conversation = repo.find_one_by_id(conversation_id)
@@ -107,6 +110,13 @@ async def get_conversation_by_id(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found"
+            )
+        
+        # Check ownership
+        if conversation.created_by != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this conversation"
             )
 
         # Sort messages
@@ -180,7 +190,7 @@ async def create_conversation(
     "/{conversation_id}",
     status_code=status.HTTP_200_OK,
     summary="Update a conversation",
-    description="Update a conversation by its ID using ORM"
+    description="Update a conversation by its ID using ORM (only owner can update)"
 )
 async def rename_conversation(
     conversation_id: UUID,
@@ -197,6 +207,13 @@ async def rename_conversation(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found"
+            )
+        
+        # Check ownership
+        if conversation.created_by != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to update this conversation"
             )
 
         conversation.conversation_topic = request.conversation_topic
@@ -223,11 +240,12 @@ async def rename_conversation(
     "/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a conversation",
-    description="Delete a conversation by its ID using ORM"
+    description="Delete a conversation by its ID using ORM (only owner can delete)"
 )
 async def delete_conversation(
     conversation_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
 ):
     """Delete a conversation - uses ORM query"""
     try:
@@ -238,6 +256,13 @@ async def delete_conversation(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found"
+            )
+        
+        # Check ownership
+        if conversation.created_by != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this conversation"
             )
 
         repo.delete_by_id(conversation.conversation_id)
@@ -254,7 +279,7 @@ async def delete_conversation(
     "/messages",
     status_code=status.HTTP_201_CREATED,
     summary="Add a message to a conversation",
-    description="Add a new message to a conversation using ORM"
+    description="Add a new message to a conversation using ORM (only owner can add messages)"
 )
 async def add_message_to_conversation(
     request: MessageCreateRequest,
@@ -270,6 +295,13 @@ async def add_message_to_conversation(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found"
+            )
+        
+        # Check ownership
+        if conversation.created_by != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to add messages to this conversation"
             )
 
         new_message = Messages(
@@ -341,6 +373,11 @@ async def chat_with_agent(
         
         return success_response(response.model_dump())
     
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -399,6 +436,11 @@ async def record_tool_call(
         result = MessageResponse.model_validate(tool_message)
         return success_response(result.model_dump())
     
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -446,6 +488,11 @@ async def respond_after_tool(
         result = MessageResponse.model_validate(agent_message)
         return success_response(result.model_dump())
     
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -489,6 +536,11 @@ async def create_system_message(
         result = MessageResponse.model_validate(system_message)
         return success_response(result.model_dump())
     
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

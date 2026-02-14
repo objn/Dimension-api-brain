@@ -41,6 +41,24 @@ class ChatService:
         self.message_repo = self.conversation_repo.get_message_repository()
         self.agent_repo = AgentRepository(db)
     
+    def _check_conversation_ownership(
+        self,
+        conversation_id: UUID,
+        user_id: UUID
+    ) -> Conversations:
+        """
+        Check if the user owns the conversation.
+        Raises ValueError if conversation not found or user doesn't own it.
+        """
+        conversation = self.conversation_repo.find_one_by_id(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found")
+        
+        if conversation.created_by != user_id:
+            raise PermissionError("You don't have permission to access this conversation")
+        
+        return conversation
+    
     def create_message(
         self,
         conversation_id: UUID,
@@ -67,15 +85,20 @@ class ChatService:
     def get_conversation_context(
         self,
         conversation_id: UUID,
-        max_messages: int = 10
+        max_messages: int = 10,
+        user_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """
         Get relevant recent messages for context.
         Filters and sorts by timestamp, returns most recent k messages.
         """
-        conversation = self.conversation_repo.find_one_by_id(conversation_id)
-        if not conversation:
-            return []
+        # Check ownership if user_id provided
+        if user_id:
+            conversation = self._check_conversation_ownership(conversation_id, user_id)
+        else:
+            conversation = self.conversation_repo.find_one_by_id(conversation_id)
+            if not conversation:
+                return []
         
         # Get messages sorted by created_at
         messages = sorted(
@@ -114,10 +137,8 @@ class ChatService:
         3. Generate response that addresses user's intent
         4. Store response as AGENT message with agent_id
         """
-        # Validate conversation exists
-        conversation = self.conversation_repo.find_one_by_id(conversation_id)
-        if not conversation:
-            raise ValueError(f"Conversation {conversation_id} not found")
+        # Validate conversation exists and check ownership
+        conversation = self._check_conversation_ownership(conversation_id, user_id)
         
         # Validate agent exists and get agent_prompt
         agent = self.agent_repo.find_one_by_id(agent_id)
@@ -185,6 +206,9 @@ class ChatService:
         - Store tool input/output as TOOL role message
         - This can then be used to generate final AGENT response
         """
+        # Check ownership
+        self._check_conversation_ownership(conversation_id, user_id)
+        
         # Format tool message content
         content = f"[TOOL: {tool_name}]"
         if tool_input:
@@ -212,6 +236,9 @@ class ChatService:
         - SYSTEM messages are for notices, errors, policies, or hidden context
         - Errors should be reported as SYSTEM messages
         """
+        # Check ownership
+        self._check_conversation_ownership(conversation_id, user_id)
+        
         if is_error:
             content = f"[ERROR] {content}"
         
@@ -224,14 +251,19 @@ class ChatService:
     
     def get_chat_history(
         self,
-        conversation_id: UUID
+        conversation_id: UUID,
+        user_id: Optional[UUID] = None
     ) -> ChatHistoryResponse:
         """
         Get full chat history with role-based statistics.
         """
-        conversation = self.conversation_repo.find_one_by_id(conversation_id)
-        if not conversation:
-            raise ValueError(f"Conversation {conversation_id} not found")
+        # Check ownership if user_id provided
+        if user_id:
+            conversation = self._check_conversation_ownership(conversation_id, user_id)
+        else:
+            conversation = self.conversation_repo.find_one_by_id(conversation_id)
+            if not conversation:
+                raise ValueError(f"Conversation {conversation_id} not found")
         
         messages = sorted(
             conversation.messages,
@@ -271,6 +303,9 @@ class ChatService:
         Per AI Agent Operating Instructions:
         - After recording TOOL output, agent should respond again as AGENT
         """
+        # Check ownership
+        self._check_conversation_ownership(conversation_id, user_id)
+        
         agent = self.agent_repo.find_one_by_id(agent_id)
         if not agent:
             raise ValueError(f"Agent {agent_id} not found")
