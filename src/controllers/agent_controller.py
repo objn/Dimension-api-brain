@@ -1,6 +1,10 @@
 """
 Agent CRUD controller.
 All operations use ORM - no raw SQL queries.
+
+Agent Access Rules:
+- Users can view their own agents + public agents (created_by = 00000000-0000-0000-0000-000000000000)
+- Users can only update/delete their own agents (not public agents)
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,7 +13,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 
 from src.database import get_db
-from src.repositories.agent_repository import AgentRepository
+from src.repositories.agent_repository import AgentRepository, PUBLIC_AGENT_UUID
 from src.database.models import Agents
 from src.dto.agent_dto import (
     AgentCreateRequest,
@@ -30,17 +34,18 @@ router = APIRouter(
     "",
     status_code=status.HTTP_200_OK,
     summary="Get all agents",
-    description="Retrieve all agents created by the authenticated user"
+    description="Retrieve agents accessible by the user (own agents + public agents)"
 )
 async def get_all_agents(
     limit: Optional[int] = None,
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get all agents created by the authenticated user - uses ORM query"""
+    """Get all accessible agents (user's own + public) - uses ORM query"""
     try:
         repo = AgentRepository(db)
-        agents = repo.find_by_creator(user_id)
+        # Get user's own agents + public agents
+        agents = repo.find_accessible_by_user(user_id)
 
         if limit:
             agents = agents[:limit]
@@ -61,14 +66,14 @@ async def get_all_agents(
     "/{agent_id}",
     status_code=status.HTTP_200_OK,
     summary="Get agent by ID",
-    description="Retrieve a single agent by ID (only if created by authenticated user)"
+    description="Retrieve a single agent by ID (own agent or public agent)"
 )
 async def get_agent_by_id(
     agent_id: UUID,
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get agent by ID - uses ORM, only returns if user owns the agent"""
+    """Get agent by ID - accessible if user owns it or it's a public agent"""
     try:
         repo = AgentRepository(db)
         agent = repo.find_one_by_id(agent_id)
@@ -79,7 +84,8 @@ async def get_agent_by_id(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
-        if agent.created_by != user_id:
+        # Check if user can access this agent (owns it or it's public)
+        if agent.created_by != user_id and agent.created_by != PUBLIC_AGENT_UUID:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to access this agent"
@@ -100,19 +106,18 @@ async def get_agent_by_id(
     "/search/{name}",
     status_code=status.HTTP_200_OK,
     summary="Search agents by name",
-    description="Search agents by name (partial match) among user's own agents"
+    description="Search agents by name (own agents + public agents)"
 )
 async def search_agents(
     name: str,
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Search agents by name - uses ORM, filtered by user's own agents"""
+    """Search agents by name - among accessible agents (own + public)"""
     try:
         repo = AgentRepository(db)
-        agents = repo.search_by_name(name)
-        # Filter to only show agents created by the authenticated user
-        agents = [agent for agent in agents if agent.created_by == user_id]
+        # Search among user's own agents + public agents
+        agents = repo.search_accessible_by_user(user_id, name)
 
         result = AgentListResponse(
             count=len(agents),
@@ -170,7 +175,7 @@ async def create_agent(
     "/{agent_id}",
     status_code=status.HTTP_200_OK,
     summary="Update agent",
-    description="Update an existing agent using ORM (requires authentication)"
+    description="Update an existing agent (only own agents, not public agents)"
 )
 async def update_agent(
     agent_id: UUID,
@@ -178,7 +183,7 @@ async def update_agent(
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Update agent - uses ORM with authenticated user_id"""
+    """Update agent - only user's own agents (cannot update public agents)"""
     try:
         repo = AgentRepository(db)
 
@@ -190,8 +195,13 @@ async def update_agent(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
-        # Check if user owns this agent
+        # Check if user owns this agent (cannot update public agents)
         if agent.created_by != user_id:
+            if agent.created_by == PUBLIC_AGENT_UUID:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot update public agents"
+                )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to update this agent"
@@ -221,7 +231,7 @@ async def update_agent(
     response_model=AgentResponse,
     status_code=status.HTTP_200_OK,
     summary="Partially update agent",
-    description="Partially update an agent (same as PUT) using ORM (requires authentication)"
+    description="Partially update an agent (only own agents, not public agents)"
 )
 async def patch_agent(
     agent_id: UUID,
@@ -229,7 +239,7 @@ async def patch_agent(
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Patch agent - uses ORM (alias for PUT) with authenticated user_id"""
+    """Patch agent - uses ORM (alias for PUT), only own agents"""
     return await update_agent(agent_id, request, db, user_id)
 
 
@@ -237,18 +247,35 @@ async def patch_agent(
     "/{agent_id}",
     status_code=status.HTTP_200_OK,
     summary="Delete agent",
-    description="Delete an agent by ID using ORM"
+    description="Delete an agent by ID (only own agents, not public agents)"
 )
-async def delete_agent(agent_id: UUID, db: Session = Depends(get_db)):
-    """Delete agent - uses ORM"""
+async def delete_agent(
+    agent_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Delete agent - only user's own agents (cannot delete public agents)"""
     try:
         repo = AgentRepository(db)
 
         # Check if agent exists
-        if not repo.exists_by_id(agent_id):
+        agent = repo.find_one_by_id(agent_id)
+        if not agent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
+            )
+        
+        # Check if user owns this agent (cannot delete public agents)
+        if agent.created_by != user_id:
+            if agent.created_by == PUBLIC_AGENT_UUID:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot delete public agents"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this agent"
             )
 
         # Delete from database

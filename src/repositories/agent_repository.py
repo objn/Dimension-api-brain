@@ -9,6 +9,9 @@ from uuid import UUID
 from .base_repository import BaseRepository
 from src.database.models import Agents
 
+# Public agent UUID - agents with this creator are visible to everyone
+PUBLIC_AGENT_UUID = UUID('00000000-0000-0000-0000-000000000000')
+
 
 class AgentRepository(BaseRepository[Agents]):
     """
@@ -32,6 +35,26 @@ class AgentRepository(BaseRepository[Agents]):
     def find_by_creator(self, user_id: UUID) -> List[Agents]:
         """Find all agents created by a specific user"""
         return self.find_by(created_by=user_id)
+    
+    def find_accessible_by_user(self, user_id: UUID) -> List[Agents]:
+        """Find all agents accessible by a user (own agents + public agents)"""
+        return self.db.query(Agents).filter(
+            (Agents.created_by == user_id) | (Agents.created_by == PUBLIC_AGENT_UUID)
+        ).all()
+    
+    def search_accessible_by_user(self, user_id: UUID, name: str) -> List[Agents]:
+        """Search agents by name among accessible agents (own + public)"""
+        return self.db.query(Agents).filter(
+            ((Agents.created_by == user_id) | (Agents.created_by == PUBLIC_AGENT_UUID)) &
+            (Agents.agent_name.ilike(f"%{name}%"))
+        ).all()
+    
+    def is_accessible_by_user(self, agent_id: UUID, user_id: UUID) -> bool:
+        """Check if an agent is accessible by a user"""
+        agent = self.find_one_by_id(agent_id)
+        if not agent:
+            return False
+        return agent.created_by == user_id or agent.created_by == PUBLIC_AGENT_UUID
 
     def find_recent(self, limit: int = 10) -> List[Agents]:
         """Find most recently created agents"""
