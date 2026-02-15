@@ -78,13 +78,24 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if settings.environment == "production":
+        # Production: specific origins, allow credentials
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    else:
+        # Development: allow all origins, no credentials
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     
     # Trailing slash middleware (normalize URLs without redirect)
     app.add_middleware(TrailingSlashMiddleware)
