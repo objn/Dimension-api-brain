@@ -2,7 +2,7 @@
 RAG Services Package.
 Provides node embedding and semantic search capabilities.
 """
-from .types import (
+from src.dto.rag_dto import (
     RAGStage,
     ChunkType,
     ChunkData,
