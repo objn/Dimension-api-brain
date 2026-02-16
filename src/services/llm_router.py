@@ -45,15 +45,33 @@ def _get_llm(provider: LLMProviderType = "openai") -> BaseChatModel:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
-def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai") -> str:
+def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai", max_retries: int = 3) -> str:
     """Generate a conversation topic based on the first message"""
     llm = _get_llm(provider)
-    messages = [
-        SystemMessage(content="Generate a concise conversation topic (max 5 words)."),
-        HumanMessage(content=message)
-    ]
-    response = llm.invoke(messages)
-    return response.content.strip()
+    
+    for attempt in range(max_retries):
+        # Adjust instruction based on attempt number
+        if attempt == 0:
+            instruction = "Generate a concise conversation topic (max 10 words)."
+        elif attempt == 1:
+            instruction = "Generate a SHORT conversation topic (maximum 5 words). Be extremely brief."
+        else:
+            instruction = "Generate ONLY 3-5 words as a topic. No explanations, just the topic."
+        
+        messages = [
+            SystemMessage(content=instruction),
+            HumanMessage(content=message)
+        ]
+        
+        response = llm.invoke(messages)
+        topic = response.content.strip()
+        
+        # Check length - if valid, return immediately
+        if len(topic) <= 255:
+            return topic
+    
+    # Fallback: If all retries failed, truncate to 255 characters
+    return topic[:252] + "..." if len(topic) > 255 else topic
 
 
 def chat_with_history(
