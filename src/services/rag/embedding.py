@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI
 
 from src.config.settings import settings
-from .types import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, EMBEDDING_BATCH_SIZE
+from src.dto.rag_dto import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, EMBEDDING_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 

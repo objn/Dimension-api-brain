@@ -6,7 +6,7 @@ import hashlib
 import re
 from typing import List, Optional, Tuple
 
-from .types import (
+from src.dto.rag_dto import (
     ChunkData, 
     ChunkType, 
     CHUNK_SIZE, 
