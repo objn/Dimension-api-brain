@@ -25,7 +25,7 @@ from src.services.job_service import (
     JobInterruptedException
 )
 
-from dto.rag_dto import (
+from src.dto.rag_dto import (
     RAGStage, 
     ChunkData, 
     ChunkDiff,
