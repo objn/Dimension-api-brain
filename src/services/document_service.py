@@ -150,6 +150,21 @@ def apply_translate(text: str, translate_to: str, provider: str = "openai") -> s
         return text
 
 
+def translate_query_for_rag(query: str, translate_to: str, provider: str = "openai", max_chars: int = 2000) -> Optional[str]:
+    """
+    Translate a short query for cross-lingual RAG search.
+    translate_to: 'en' or 'th'. Returns translated string or None if empty/failed.
+    """
+    if not query or not query.strip():
+        return None
+    text = query.strip()[:max_chars]
+    try:
+        out = apply_translate(text, translate_to, provider=provider)
+        return out.strip() if out and out.strip() else None
+    except Exception:
+        return None
+
+
 def process_document(
     db: Session,
     file_id: UUID,

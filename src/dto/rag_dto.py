@@ -115,6 +115,11 @@ EMBEDDING_BATCH_SIZE = 50   # Number of texts per API call
 DEFAULT_SIMILARITY_THRESHOLD = 0.7
 DEFAULT_SEARCH_LIMIT = 10
 
+# Cross-lingual search (query translation so content in another language can be found)
+RAG_CROSS_LINGUAL_ENABLED = True   # Set False to disable query translation
+RAG_QUERY_TRANSLATE_LLM_PROVIDER = "openai"  # LLM used to translate query (en/th)
+RAG_QUERY_TRANSLATE_MAX_CHARS = 2000  # Max query length sent for translation
+
 
 # ============================================================================
 # Pydantic models for RAG Search API

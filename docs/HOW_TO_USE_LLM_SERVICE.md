@@ -66,7 +66,7 @@ Agents define the AI persona via `agent_prompt`. You choose one agent per chat m
 }
 ```
 
-- **use_rag:** If `true`, the service runs **semantic search** over node_vector (by similarity), selects the **top-k chunks** (see `rag_top_k`), injects them into context, and returns **citations** in the response (source node/chunk and snippet). When `use_rag` is true, send **workspace_id** (current workspace) to scope search to nodes in that workspace.
+- **use_rag:** If `true`, the service runs **semantic search** over node_vector (by similarity), selects the **top-k chunks** (see `rag_top_k`), injects them into context, and returns **citations** in the response (source node/chunk and snippet). When `use_rag` is true, send **workspace_id** (current workspace) to scope search to nodes in that workspace. If **cross-lingual search** is enabled (see §6), queries in one language can also retrieve chunks with similar meaning in the other language (Thai/English).
 - **workspace_id:** Optional UUID of the current workspace. When `use_rag` is true, send this to scope semantic search to nodes in the workspace.
 - **attach:** Optional explicit context (each gets a citation):
   - **nodes:** List of node UUIDs to attach (full content injected and cited).
@@ -116,6 +116,11 @@ One user message is stored; each agent in `agent_ids` responds. The response con
 ```
 
 Returns semantic search results over embedded node chunks: `node_id`, `chunk_id`, `node_content_md_chunk`, `similarity`. Use this to test RAG or build custom flows.
+
+**Cross-lingual search:** When enabled, the service translates the query to the other supported language (Thai ↔ English) and merges results so that content with **similar meaning in a different language** is also found (e.g. searching in English can return Thai chunks that mean the same). This is controlled by:
+
+- **RAG_CROSS_LINGUAL_ENABLED** (env, default `true`) — Set to `false` to disable query translation and use single-language search only.
+- **RAG_QUERY_TRANSLATE_LLM_PROVIDER** (env, default `openai`) — LLM provider used to translate the query (e.g. `openai`, `gemini`, `anthropic`).
 
 ---
 

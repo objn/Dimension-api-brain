@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # File / Document upload
     upload_dir: str = Field(default="uploads", alias="UPLOAD_DIR")
 
+    # RAG cross-lingual search (query translation so content in another language can be found)
+    rag_cross_lingual_enabled: bool = Field(default=True, alias="RAG_CROSS_LINGUAL_ENABLED")
+    rag_query_translate_llm_provider: str = Field(default="openai", alias="RAG_QUERY_TRANSLATE_LLM_PROVIDER")
+
     class Config:
         env_file = ".env"
         extra = "ignore"
