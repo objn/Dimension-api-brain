@@ -28,7 +28,7 @@ import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import update
 
-from src.database.models import Job, Metadatas
+from src.database.models import Job, Metadatas, Jobtypes
 from src.database import get_db, get_silent_db
 from src.config.settings import settings
 
@@ -406,14 +406,17 @@ class JobService:
                 job_metadata = dict(metadata_record.metadata_json)
             
             # Get task function from registry
+            # Handles all registered job types (e.g. process_document, node_content_embedding)
+            # registered at startup in main.py _register_job_tasks()
             from src.services.task_registry import task_registry
             task_func = task_registry.get(job.job_type)
             if not task_func:
                 # No registered handler - mark as failed
-                logger.error(f"No task registered for job_type: {job.job_type}")
+                err_msg = f"No task handler registered for job_type: {job.job_type}"
+                logger.error(err_msg)
                 self._update_status(job_id, JobStatus.FAILED, {
-                    "error": f"No task handler registered for job_type: {job.job_type}"
-                })
+                    "error": err_msg
+                }, error_log=err_msg)
                 return ActivateResult(activated=False, reason="no_task_handler")
             
             # Create in-memory context
@@ -505,6 +508,8 @@ class JobService:
             "completed_at": datetime.utcnow().isoformat(),
             "result_summary": str(result)[:500] if result else None
         }
+        if isinstance(result, dict):
+            metadata.update(result)
         self._update_status(job_id, JobStatus.SUCCESS, metadata)
         self._trigger_callbacks(job_id, JobStatus.SUCCESS, result)
         self._cleanup_future(job_id)
@@ -512,12 +517,13 @@ class JobService:
     
     def _on_job_failed(self, job_id: UUID, error: Exception) -> None:
         """Handle job failure"""
+        error_log = f"{str(error)}\n\n{traceback.format_exc()}"
         metadata = {
             "failed_at": datetime.utcnow().isoformat(),
             "error": str(error),
             "traceback": traceback.format_exc()
         }
-        self._update_status(job_id, JobStatus.FAILED, metadata)
+        self._update_status(job_id, JobStatus.FAILED, metadata, error_log=error_log)
         self._trigger_callbacks(job_id, JobStatus.FAILED, error)
         self._cleanup_future(job_id)
         logger.error(f"Job {job_id} failed: {error}")
@@ -679,6 +685,7 @@ class JobService:
                 "job_start_time": job.job_start_time.isoformat() if job.job_start_time else None,
                 "job_end_time": job.job_end_time.isoformat() if job.job_end_time else None,
                 "job_actived": job.job_actived,
+                "job_error_log": getattr(job, "job_error_log", None),
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "created_by": str(job.created_by) if job.created_by else None,
                 "updated_at": job.updated_at.isoformat() if job.updated_at else None,
@@ -797,6 +804,12 @@ class JobService:
         job_start_time: Optional[datetime] = None
     ) -> None:
         """Persist job to database"""
+        if job_type:
+            existing = db.query(Jobtypes).filter(Jobtypes.Job_type_id == job_type).first()
+            if not existing:
+                db.add(Jobtypes(Job_type_id=job_type))
+                db.flush()
+
         job = Job(
             job_id=job_id,
             job_type=job_type,
@@ -836,22 +849,23 @@ class JobService:
         self,
         job_id: UUID,
         status: JobStatus,
-        metadata_update: Optional[Dict[str, Any]] = None
+        metadata_update: Optional[Dict[str, Any]] = None,
+        error_log: Optional[str] = None
     ) -> None:
-        """Update job status in database"""
+        """Update job status in database. When status is FAILED, error_log is written to Job.job_error_log."""
         db_gen = get_db()
         try:
             db = next(db_gen)
             now = datetime.utcnow()
-            
+
             job = db.query(Job).filter(Job.job_id == job_id).first()
             if job:
                 job.job_result = status.value
                 job.updated_at = now
-                
+
                 if status == JobStatus.PROCESSING:
                     job.job_actived = True
-                
+
                 terminal_statuses = [
                     JobStatus.SUCCESS, JobStatus.FAILED,
                     JobStatus.INTERRUPTED, JobStatus.CANCELLED,
@@ -859,10 +873,20 @@ class JobService:
                 ]
                 if status in terminal_statuses:
                     job.job_end_time = now
-            
+
+                if status == JobStatus.FAILED and hasattr(Job, "job_error_log"):
+                    log_text = error_log
+                    if not log_text and metadata_update:
+                        err = metadata_update.get("error") or metadata_update.get("traceback")
+                        if err:
+                            log_text = err if isinstance(err, str) else str(err)
+                    if not log_text:
+                        log_text = "Job failed (no error details captured)."
+                    job.job_error_log = (log_text[:500000] if len(log_text) > 500000 else log_text)
+
             # Update metadata
             self._update_metadata_status(db, job_id, status, metadata_update)
-            
+
             db.commit()
         finally:
             try:

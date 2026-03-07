@@ -234,6 +234,18 @@ class ConversationWithMessagesResponse(BaseResponseModel):
 # CHAT DTOs - For AI Agent Operating Instructions
 # ============================================================================
 
+class AttachRequest(BaseModel):
+    """Node and file IDs to attach for retrieval/context in chat."""
+    nodes: List[UUID] = Field(
+        default_factory=list,
+        description="Node IDs to attach for context"
+    )
+    files: List[UUID] = Field(
+        default_factory=list,
+        description="File IDs to attach (content parsed and injected)"
+    )
+
+
 class ChatRequest(BaseModel):
     """
     Request body for sending a chat message to an agent.
@@ -246,11 +258,29 @@ class ChatRequest(BaseModel):
         default="openai",
         description="LLM provider to use"
     )
-    max_history: Optional[int] = Field(
-        default=10,
+    use_rag: Optional[bool] = Field(
+        default=False,
+        description="If true, retrieve relevant node chunks and inject into context; response includes citations"
+    )
+    workspace_id: Optional[UUID] = Field(
+        default=None,
+        description="When use_rag is true, scope search to this workspace (frontend sends current workspace)"
+    )
+    attach: Optional[AttachRequest] = Field(
+        default_factory=AttachRequest,
+        description="Explicit nodes and/or files to attach for context retrieval"
+    )
+    max_reasoning_loops: Optional[int] = Field(
+        default=1,
         ge=1,
-        le=50,
-        description="Maximum number of recent messages to include as context"
+        le=10,
+        description="Max reasoning steps before answering (1 = no extra reasoning loop; 2+ = model reasons step-by-step up to this many steps)"
+    )
+    rag_top_k: Optional[int] = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="When use_rag is true: number of top chunks by similarity to retrieve from node_vector (default 5)"
     )
 
     class Config:
@@ -260,7 +290,11 @@ class ChatRequest(BaseModel):
                 "message_content": "What is machine learning?",
                 "agent_id": "123e4567-e89b-12d3-a456-426614174999",
                 "llm_provider": "openai",
-                "max_history": 10
+                "use_rag": False,
+                "workspace_id": None,
+                "attach": {"nodes": [], "files": []},
+                "max_reasoning_loops": 1,
+                "rag_top_k": 5
             }
         }
 
@@ -316,6 +350,10 @@ class ChatResponse(BaseModel):
     agent_id: UUID
     agent_name: Optional[str]
     messages_in_context: int = Field(description="Number of messages used as context")
+    citations: Optional[List[dict]] = Field(
+        default_factory=list,
+        description="When use_rag was true: sources (node_id, chunk_id, snippet) used for the response"
+    )
 
     class Config:
         json_schema_extra = {
@@ -336,6 +374,29 @@ class ChatResponse(BaseModel):
                 "messages_in_context": 5
             }
         }
+
+
+class ChatPanelRequest(BaseModel):
+    """Request for panel chat: one user message, multiple agents respond."""
+    conversation_id: UUID = Field(..., description="ID of the conversation")
+    message_content: str = Field(..., min_length=1, description="User message content")
+    agent_ids: List[UUID] = Field(..., min_length=1, max_length=10, description="IDs of agents that will each respond")
+    llm_provider: Optional[LLMProviderType] = Field(default="openai")
+    max_history: Optional[int] = Field(default=10, ge=1, le=50)
+
+
+class AgentPanelResponseItem(BaseModel):
+    """Single agent response in panel chat."""
+    agent_id: UUID
+    agent_name: Optional[str]
+    message: MessageResponse
+
+
+class ChatPanelResponse(BaseModel):
+    """Response for panel chat: one user message, multiple agent responses."""
+    conversation_id: UUID
+    user_message: MessageResponse
+    agent_responses: List[AgentPanelResponseItem]
 
 
 class ChatHistoryResponse(BaseModel):

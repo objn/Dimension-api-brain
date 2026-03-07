@@ -1,0 +1,221 @@
+{
+  "info": {
+    "name": "Dimension API Brain",
+    "description": "LLM Service API: agents, conversations, chat (single + panel), RAG, document import, jobs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" },
+    { "key": "workspace_id", "value": "" },
+    { "key": "conversation_id", "value": "" },
+    { "key": "agent_id", "value": "" },
+    { "key": "file_id", "value": "" },
+    { "key": "job_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Get all agents",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents"
+          }
+        },
+        {
+          "name": "Get agent by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/{{agent_id}}"
+          }
+        },
+        {
+          "name": "Create agent",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_name\": \"My Agent\",\n  \"agent_desc\": \"Description\",\n  \"agent_prompt\": \"You are a helpful assistant.\"\n}"
+            },
+            "url": "{{base_url}}/agents"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "Create conversation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_content\": \"Hello, first message\",\n  \"llm_provider\": \"openai\"\n}"
+            },
+            "url": "{{base_url}}/conversations"
+          }
+        },
+        {
+          "name": "Get all conversations",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/conversations"
+          }
+        },
+        {
+          "name": "Get conversation by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/conversations/{{conversation_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Chat (single agent)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": { \"nodes\": [], \"files\": [] },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
+            },
+            "url": "{{base_url}}/conversations/chat",
+            "description": "use_rag: search node_vector by similarity, top-k chunks (rag_top_k). attach: nodes/files get citations. max_reasoning_loops: 2+ for step-by-step reasoning."
+          }
+        },
+        {
+          "name": "Chat panel (multiple agents)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"Your question\",\n  \"agent_ids\": [\"{{agent_id}}\"],\n  \"llm_provider\": \"openai\",\n  \"max_history\": 10\n}"
+            },
+            "url": "{{base_url}}/conversations/chat/panel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RAG",
+      "item": [
+        {
+          "name": "Semantic search",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"natural language search query\",\n  \"limit\": 10,\n  \"min_similarity\": 0.7\n}"
+            },
+            "url": "{{base_url}}/rag/search"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Import document",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{base_url}}/documents/import",
+            "description": "Upload file (default: upload only, no process job). Add ?auto_process=true to start processing and get job_id in response; then poll GET /jobs/{job_id}."
+          }
+        },
+        {
+          "name": "Import document (with auto-process)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{base_url}}/documents/import?auto_process=true",
+            "description": "Upload and start process job. Response includes file_id and job_id. Poll GET /jobs/{job_id} for status; on SUCCESS metadata has node_id, node_name, embedding_job_id."
+          }
+        },
+        {
+          "name": "Import document (upload only)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{base_url}}/documents/import?auto_process=false",
+            "description": "Explicit upload only (same as default). Call Process document to start processing."
+          }
+        },
+        {
+          "name": "Process document",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reformat_options\": [\"summarize\", \"to_bullet_points\"],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"use_llm_extract\": false,\n  \"max_pages_per_call\": 5,\n  \"translate_to\": null\n}"
+            },
+            "url": "{{base_url}}/documents/{{file_id}}/process",
+            "description": "Register a process job (202 Accepted). Poll GET /jobs/{job_id} for status. On SUCCESS, metadata contains node_id, node_name, embedding_job_id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Get job (full)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/jobs/{{job_id}}",
+            "description": "Full job record and metadata. For process_document jobs, when status is SUCCESS metadata includes node_id, node_name, embedding_job_id."
+          }
+        },
+        {
+          "name": "Get job status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/jobs/{{job_id}}/status",
+            "description": "Lightweight status and optional progress (stage, progress)."
+          }
+        },
+        {
+          "name": "Get all jobs",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/jobs"
+          }
+        }
+      ]
+    }
+  ]
+}

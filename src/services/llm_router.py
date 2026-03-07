@@ -4,20 +4,25 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from src.config.settings import settings
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 import httpx
+import base64
+import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Type alias for LLM providers
 LLMProviderType = Literal["openai", "gemini", "anthropic"]
 
 
-def _get_llm(provider: LLMProviderType = "openai") -> BaseChatModel:
-    """Get LLM instance based on provider"""
+def _get_llm(provider: LLMProviderType = "openai", timeout: float = 30.0) -> BaseChatModel:
+    """Get LLM instance based on provider. Use higher timeout for vision (e.g. 120.0)."""
     if provider == "openai":
         http_client = httpx.Client(
             headers={"Content-Type": "application/json; charset=utf-8"},
-            timeout=30.0
+            timeout=timeout
         )
         return ChatOpenAI(
             api_key=settings.openai_api_key,
@@ -45,6 +50,64 @@ def _get_llm(provider: LLMProviderType = "openai") -> BaseChatModel:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
+def extract_text_from_images_vision(
+    images: List[Union[bytes, "io.BytesIO", "Image.Image"]],
+    provider: LLMProviderType = "openai",
+    system_prompt: Optional[str] = None,
+    timeout: float = 120.0,
+    single_page_prompt: bool = False,
+) -> str:
+    """
+    Extract text from document images using a vision-capable LLM.
+    Use for PDF pages (as images) when local OCR fails or is not available.
+    Images can be PIL Image, bytes, or BytesIO.
+    When single_page_prompt=True (OCR-style, one page), uses a per-page extraction prompt.
+    """
+    if not images:
+        return ""
+    try:
+        from PIL import Image as PILImage
+    except ImportError:
+        raise ValueError("PIL (Pillow) is required for vision extraction")
+
+    content_parts: List[dict] = []
+    if system_prompt:
+        content_parts.append({"type": "text", "text": system_prompt})
+    if single_page_prompt and len(images) == 1:
+        prompt_text = (
+            "You are an OCR system. Extract ALL text from this single document page image. "
+            "Preserve layout, paragraphs, lists, tables, and reading order. "
+            "Return only the extracted text, no preamble or commentary."
+        )
+    else:
+        prompt_text = (
+            "Extract all text from these document images in order. "
+            "Preserve structure (paragraphs, lists, tables) and order. Return only the extracted text, no preamble."
+        )
+    content_parts.append({"type": "text", "text": prompt_text})
+
+    for i, img in enumerate(images):
+        if hasattr(img, "save"):
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        elif isinstance(img, bytes):
+            b64 = base64.b64encode(img).decode("utf-8")
+        elif isinstance(img, io.BytesIO):
+            b64 = base64.b64encode(img.getvalue()).decode("utf-8")
+        else:
+            continue
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{b64}"}
+        })
+
+    llm = _get_llm(provider, timeout=timeout)
+    message = HumanMessage(content=content_parts)
+    response = llm.invoke([message])
+    return (response.content or "").strip()
+
+
 def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai", max_retries: int = 3) -> str:
     """Generate a conversation topic based on the first message"""
     llm = _get_llm(provider)
@@ -52,7 +115,7 @@ def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai", ma
     for attempt in range(max_retries):
         # Adjust instruction based on attempt number
         if attempt == 0:
-            instruction = "Generate a concise conversation topic (max 10 words)."
+            instruction = "Create a concise conversation topic from the user's first sentence (no more than 10 words)."
         elif attempt == 1:
             instruction = "Generate a SHORT conversation topic (maximum 5 words). Be extremely brief."
         else:
@@ -80,11 +143,12 @@ def chat_with_history(
     provider: LLMProviderType = "openai",
     system_prompt: Optional[str] = None,
     k: int = 10,
-    topic: Optional[str] = None
+    topic: Optional[str] = None,
+    max_reasoning_loops: int = 1,
 ) -> str:
     """
     Chat with conversation history.
-    
+
     Args:
         user_message: The current user message
         history: List of message dicts with 'message_content', 'sender_role', and 'created_at'
@@ -92,13 +156,23 @@ def chat_with_history(
         system_prompt: Optional system prompt to set the assistant's behavior
         k: Maximum number of recent messages to include from history
         topic: Optional conversation topic to include when history has < 10 messages
-    
+        max_reasoning_loops: 1 = single response; 2+ = instruct model to reason step-by-step (up to N steps) before answering
+
     Returns:
         The assistant's response content
     """
+    # When max_reasoning_loops > 1, prepend reasoning instruction so the model thinks step-by-step
+    if max_reasoning_loops > 1:
+        reasoning_instruction = (
+            f"Reason step by step (up to {max_reasoning_loops} steps) before giving your final answer. "
+            "You may put your reasoning in <reasoning>...</reasoning> and your final answer in <answer>...</answer>, "
+            "or simply write your reasoning followed by your answer. "
+        )
+        system_prompt = (reasoning_instruction + "\n\n" + (system_prompt or "")).strip() or reasoning_instruction
+
     llm = _get_llm(provider)
     messages = []
-    
+
     # Add system prompt if provided
     if system_prompt:
         messages.append(SystemMessage(content=system_prompt))

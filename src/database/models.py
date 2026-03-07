@@ -5,10 +5,10 @@ Generated similar to TypeORM entity generation.
 from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Boolean, Float, JSON, ARRAY
 from sqlalchemy.dialects.postgresql import UUID, BYTEA, INET
 from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
 from datetime import datetime
 import uuid
 
+from pgvector.sqlalchemy import Vector
 from .connection import Base
 
 
@@ -92,6 +92,7 @@ class Job(Base):
     job_start_time = Column(DateTime)
     job_end_time = Column(DateTime)
     job_actived = Column(Boolean)
+    job_error_log = Column(Text, nullable=True)
 
     JobResults = relationship("JobResults", foreign_keys=[job_result])
     JobTypes = relationship("Jobtypes", foreign_keys=[job_type])

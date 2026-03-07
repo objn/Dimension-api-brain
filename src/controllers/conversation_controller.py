@@ -37,6 +37,8 @@ from src.dto.conversation_dto import (
     # Chat DTOs
     ChatRequest,
     ChatResponse,
+    ChatPanelRequest,
+    ChatPanelResponse,
     ToolCallRequest,
     SystemMessageRequest,
     SenderRole
@@ -368,7 +370,11 @@ async def chat_with_agent(
             agent_id=request.agent_id,
             user_id=current_user_id,
             llm_provider=request.llm_provider,
-            max_history=request.max_history
+            use_rag=request.use_rag or False,
+            workspace_id=request.workspace_id,
+            attach={"nodes": request.attach.nodes, "files": request.attach.files},
+            max_reasoning_loops=request.max_reasoning_loops or 1,
+            rag_top_k=request.rag_top_k,
         )
         
         return success_response(response.model_dump())
@@ -399,6 +405,40 @@ async def chat_with_agent(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing chat: {str(e)}"
+        )
+
+
+@router.post(
+    "/chat/panel",
+    status_code=status.HTTP_200_OK,
+    summary="Panel chat (multiple agents)",
+    description="Send one user message and get a response from each of the specified agents.",
+)
+async def chat_panel(
+    request: ChatPanelRequest,
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """One user message, multiple agents respond; returns list of agent responses."""
+    try:
+        chat_service = ChatService(db)
+        response = chat_service.process_panel_message(
+            conversation_id=request.conversation_id,
+            user_message=request.message_content,
+            agent_ids=request.agent_ids,
+            user_id=current_user_id,
+            llm_provider=request.llm_provider,
+            max_history=request.max_history,
+        )
+        return success_response(response.model_dump())
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing panel chat: {str(e)}"
         )
 
 

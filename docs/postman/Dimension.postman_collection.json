@@ -1,0 +1,2366 @@
+{
+  "info": {
+    "_postman_id": "01c0d071-124b-429e-9259-ff78880e6f1f",
+    "name": "Dimension",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "41513010"
+  },
+  "item": [
+    {
+      "name": "auth",
+      "item": [
+        {
+          "name": "signIn",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = JSON.parse(responseBody);",
+                  "postman.setGlobalVariable(\"token\", data.resultData.access_token);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"testme@gmail.com\",\n    \"password\": \"Pass1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "signUp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = JSON.parse(responseBody);",
+                  "postman.setGlobalVariable(\"token\", data.resultData.access_token);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"testme@gmail.com\",\n    \"user_display\": \"test-user01\",\n    \"first_name\": \"Testme\",\n    \"last_name\": \"IGotTest\",\n    \"password\": \"Pass1234\",\n    \"num_phone\": \"0999999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-up"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "changePassword",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = JSON.parse(responseBody);",
+                  "postman.setGlobalVariable(\"token\", data.resultData.access_token);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"old_password\": \"Pass1234\",\n    \"new_password\": \"Pass4321\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "signOut",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.environment.unset(\"token\"); ",
+                  "    pm.globals.unset(\"token\");",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-out"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "item": [
+        {
+          "name": "users/me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "userById [DeBug]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/:userId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":userId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "66e87c0d-771e-43bd-8781-d52516ec5884"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"testme@gmail.com\",\n    \"user_display\": \"test-userr\",\n    \"first_name\": \"Testme\",\n    \"last_name\": \"IGotTest\",\n    \"num_phone\": \"0999999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/:userId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":userId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "66e87c0d-771e-43bd-8781-d52516ec5884"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/:userId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":userId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "66e87c0d-771e-43bd-8781-d52516ec5884"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "files",
+      "item": [
+        {
+          "name": "files",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "fileById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/files/:fileId?download=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                ":fileId"
+              ],
+              "query": [
+                {
+                  "key": "download",
+                  "value": "true"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "fileId",
+                  "value": "7e95e14c-3e84-49a8-b0ba-9712e7556f49"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "upload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "uuid": "80a072f1-c301-4012-ab54-8c52eaf054a6",
+                  "src": "/C:/Users/objna/Downloads/_storage_emulated_0_Android_data_com.miui.gallery_cache_SecurityShare_1752896638712.png"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/files/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                "upload"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "files",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/files/:fileId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                ":fileId"
+              ],
+              "variable": [
+                {
+                  "key": "fileId",
+                  "value": "f6d679f2-a02c-4855-85b5-4dbf1fadfc86"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "workspaces",
+      "item": [
+        {
+          "name": "workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workspaces"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "workspaceById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/:workspaceId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workspaces",
+                ":workspaceId"
+              ],
+              "variable": [
+                {
+                  "key": "workspaceId",
+                  "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"workspace_name\": \"Workspace 01\",\n    \"workspace_desc\": \"Testme I like cheesy workspace\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workspaces"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"workspace_name\": \"Workspace 01\",\n    \"workspace_desc\": \"Testme I dont like cheesy workspace\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/:workspaceId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workspaces",
+                ":workspaceId"
+              ],
+              "variable": [
+                {
+                  "key": "workspaceId",
+                  "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/:workspaceId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workspaces",
+                ":workspaceId"
+              ],
+              "variable": [
+                {
+                  "key": "workspaceId",
+                  "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "nodes",
+      "item": [
+        {
+          "name": "nodes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "nodeById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nodes/:nodeId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nodes",
+                ":nodeId"
+              ],
+              "variable": [
+                {
+                  "key": "nodeId",
+                  "value": "a1f3b2c4-9d6e-4b3f-a8d9-1f2e3b4c5d6f"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "nodes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"node_name\": \"Classic Margherita Pizza 02\",\n    \"node_desc\": \"A simple, authentic Neapolitan-style Margherita pizza with fresh mozzarella, basil, and a blistered crust.\",\n    \"node_content_md\": \"# Classic Margherita Pizza\\n\\n## Ingredients\\n- 500g strong bread flour\\n- 325ml warm water\\n- 10g salt\\n- 7g instant yeast\\n- 1 tbsp olive oil\\n- 200g canned San Marzano tomatoes, crushed\\n- 250g fresh mozzarella, torn into pieces\\n- Fresh basil leaves\\n- Extra virgin olive oil\\n- Salt to taste\\n\\n## Makes\\n- 2 medium pizzas (about 10–12\\\" each)\\n\\n## Prep & Cook Time\\n- Prep: 20 minutes (+ 1–24 hr proving)\\n- Cook: 6–8 minutes (in a very hot oven or pizza stone)\\n\\n## Directions\\n1. In a bowl, mix flour and salt. Dissolve yeast in warm water, then combine with flour and olive oil. Knead for 8–10 minutes until smooth and elastic.\\n2. Cover and let rise until doubled (1–2 hours) or refrigerate for a slow 24-hour ferment for more flavor.\\n3. Preheat oven to highest temperature (250–300°C / 475–570°F) with a pizza stone if available.\\n4. Divide dough into two balls, stretch to disks.\\n5. Spread a thin layer of crushed tomatoes, season lightly with salt. Top with torn mozzarella.\\n6. Bake on the stone or hot tray until crust is blistered and cheese melted (6–8 minutes).\\n7. Finish with fresh basil leaves and a drizzle of extra virgin olive oil.\\n\\n## Notes\\n- Use high heat for authentic charring.\\n- For extra flavor, use a 24-hour cold ferment and very high-protein flour.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "nodeById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"node_name\": \"Classic Margherita Pizza\",\n    \"node_desc\": \"A simple, authentic Neapolitan-style Margherita pizza with fresh mozzarella, basil, and a blistered crust.\",\n    \"node_content_md\": \"# Classic Margherita Pizza\\n\\n## Ingredients\\n- 500g strong bread flour\\n- 325ml warm water\\n- 10g salt\\n- 7g instant yeast\\n- 1 tbsp olive oil\\n- 200g canned San Marzano tomatoes, crushed\\n- 250g fresh mozzarella, torn into pieces\\n- Fresh basil leaves\\n- Extra virgin olive oil\\n- Salt to taste\\n\\n## Makes\\n- 2 medium pizzas (about 10–12\\\" each)\\n\\n## Prep & Cook Time\\n- Prep: 20 minutes (+ 1–24 hr proving)\\n- Cook: 6–8 minutes (in a very hot oven or pizza stone)\\n\\n## Directions\\n1. In a bowl, mix flour and salt. Dissolve yeast in warm water, then combine with flour and olive oil. Knead for 8–10 minutes until smooth and elastic.\\n2. Cover and let rise until doubled (1–2 hours) or refrigerate for a slow 24-hour ferment for more flavor.\\n3. Preheat oven to highest temperature (250–300°C / 475–570°F) with a pizza stone if available.\\n4. Divide dough into two balls, stretch to disks.\\n5. Spread a thin layer of crushed tomatoes, season lightly with salt. Top with torn mozzarella.\\n6. Bake on the stone or hot tray until crust is blistered and cheese melted (6–8 minutes).\\n7. Finish with fresh basil leaves and a drizzle of extra virgin olive oil.\\n\\n## Notes\\n- Use high heat for authentic charring.\\n- For extra flavor, use a 24-hour cold ferment and very high-protein flour.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nodes/:nodeId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nodes",
+                ":nodeId"
+              ],
+              "variable": [
+                {
+                  "key": "nodeId",
+                  "value": "a1f3b2c4-9d6e-4b3f-a8d9-1f2e3b4c5d6f"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "nodes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nodes/:nodeId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nodes",
+                ":nodeId"
+              ],
+              "variable": [
+                {
+                  "key": "nodeId",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "relations",
+      "item": [
+        {
+          "name": "workspaces",
+          "item": [
+            {
+              "name": "relations [workspace_node]",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/relations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "relations"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "relationsById [workspaceId_node]",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/relations/workspaces/:workspaceId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "relations",
+                    "workspaces",
+                    ":workspaceId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "workspaceId",
+                      "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "relationsById [workspaceId_nodeId]",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/relations/workspaces/:workspaceId/nodes/:nodeId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "relations",
+                    "workspaces",
+                    ":workspaceId",
+                    "nodes",
+                    ":nodeId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "workspaceId",
+                      "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                    },
+                    {
+                      "key": "nodeId",
+                      "value": "990276a9-2778-41ea-b6b2-c7ee4fa736e9"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "relations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"parent_id\": \"9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9\",\n    \"child_id\": \"a1f3b2c4-9d6e-4b3f-a8d9-1f2e3b4c5d6f\",\n    \"relation_type_id\": \"RELATED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/relations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "relations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"relation_type_id\": \"RELATED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/relations/parent/:parentId/child/:childId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relations",
+                "parent",
+                ":parentId",
+                "child",
+                ":childId"
+              ],
+              "variable": [
+                {
+                  "key": "parentId",
+                  "value": "9c29b6a9-ef23-4119-b6b2-c7ee4fa736e9"
+                },
+                {
+                  "key": "childId",
+                  "value": "a1f3b2c4-9d6e-4b3f-a8d9-1f2e3b4c5d6f"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "relationPriorities",
+      "item": [
+        {
+          "name": "relationPriorities",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/relation-priorities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relation-priorities"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "relationPriorityById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/relation-priorities/:relationPriorityId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relation-priorities",
+                ":relationPriorityId"
+              ],
+              "variable": [
+                {
+                  "key": "relationPriorityId",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "relationTypes",
+      "item": [
+        {
+          "name": "relationTypes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/relation-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relation-types"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "relationTypeById",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/relation-types/:relationTypeId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "relation-types",
+                ":relationTypeId"
+              ],
+              "variable": [
+                {
+                  "key": "relationTypeId",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "agents [LLM]",
+      "item": [
+        {
+          "name": "agents",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_llm}}/agents",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "agents/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_llm}}/agents/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "agents",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3a67f12c-4e96-4efc-b9db-71ca72fe28e9"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "agents",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"agent_name\": \"Dimension Agent\",\r\n    \"agent_desc\": \"this is example agent\",\r\n    \"agent_prompt\": \"you are agent dimension is assistant of answer general\",\r\n    \"agent_profile_image\": \"96050c84-1133-481a-a75d-3b0d13481c9c\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/agents",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "agents/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"agent_name\": \"Dimension Agent\",\r\n    \"agent_desc\": \"this is example agent\",\r\n    \"agent_prompt\": \"you are agent dimension is assistant of answer general\",\r\n    \"agent_profile_image\": \"96050c84-1133-481a-a75d-3b0d13481c9c\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/agents/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "agents",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "agents/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"agent_name\": \"Dimension Agent\",\r\n    \"agent_desc\": \"this is example agent\",\r\n    \"agent_prompt\": \"you are agent dimension is assistant of answer general\",\r\n    \"agent_profile_image\": \"96050c84-1133-481a-a75d-3b0d13481c9c\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/agents/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "agents",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "agents/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{localhost_llm}}/agents/:id",
+              "host": [
+                "{{localhost_llm}}"
+              ],
+              "path": [
+                "agents",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "ede40ba9-69f8-49d8-9ecb-56ee8fecc17b"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "conversations [LLM]",
+      "item": [
+        {
+          "name": "conversations",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_llm}}/conversations",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conversations/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_llm}}/conversations/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "conversations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "de993cbf-d3ba-49da-8dd2-d2e91419fb40"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conversations",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"message_content\":\"ลูกอม Ricola มีรสอะไรบ้าง\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/conversations",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conversations/chat",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"conversation_id\": \"de993cbf-d3ba-49da-8dd2-d2e91419fb40\",\r\n    \"agent_id\":\"3a67f12c-4e96-4efc-b9db-71ca72fe28e9\",\r\n    \"message_content\":\"ลูกอม Ricola มีรสอะไรบ้าง\",\r\n    \"sender_role\":\"USER\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/conversations/chat",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "conversations",
+                "chat"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conversations/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"conversation_topic\" : \"ทดสอบเปลี่ยนชื่อ 1234\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{localhost_llm}}/conversations/:id",
+              "host": [
+                "{{localhost_llm}}"
+              ],
+              "path": [
+                "conversations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "0119b264-f460-46c1-9af4-9aed0f215ace"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conversations/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{localhost_llm}}/conversations/:id",
+              "host": [
+                "{{localhost_llm}}"
+              ],
+              "path": [
+                "conversations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "865639e7-3530-443e-b4cb-a13152293471"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "jobs [LLM]",
+      "item": [
+        {
+          "name": "jobs",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"job_type\":\"node_content_embedding\",\r\n    \"metadata_json\": {\r\n        \"node_id\": \"a1f3b2c4-9d6e-4b3f-a8d9-1f2e3b4c5d6f\"\r\n    }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "9f3ffc95-8020-433a-b9c1-d35fec009272"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"handleJobTo\":\"restart\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "c21cb64a-93c4-4c7c-bfb3-f0337a487256"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/:id",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "35515128-2045-4f54-9827-16c6e1e7847c"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "daemon [LLM]",
+      "item": [
+        {
+          "name": "jobs/daemon/status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/daemon/status",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                "daemon",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs/daemon/start",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/daemon/start",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                "daemon",
+                "start"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "jobs/daemon/stop",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_llm}}/jobs/daemon/stop",
+              "host": [
+                "{{baseUrl_llm}}"
+              ],
+              "path": [
+                "jobs",
+                "daemon",
+                "stop"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "New Folder",
+      "item": []
+    },
+    {
+      "name": "health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "examplegen",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"table_name\":\"Nodes\",\r\n    \"prompt\":\"generate 3 row\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "localhost:6200/llm/examplegen",
+          "host": [
+            "localhost"
+          ],
+          "port": "6200",
+          "path": [
+            "llm",
+            "examplegen"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

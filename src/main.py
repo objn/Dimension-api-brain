@@ -3,14 +3,45 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 
-from src.controllers import (
-    agent_router, 
-    conversation_router, 
-    metadata_router, 
-    example_gen_router, 
-    job_router
-)
 from src.config import settings
+from src.controllers import (
+    agent_router,
+    conversation_router,
+    metadata_router,
+    example_gen_router,
+    job_router,
+    rag_router,
+    document_router,
+)
+
+
+def _register_job_tasks() -> None:
+    """Register job task handlers so the job daemon can run them."""
+    from src.services.task_registry import task_registry
+    from src.services.rag import node_embedding_service
+    from src.services.document_service import run_process_document_task
+
+    task_registry.register("node_content_embedding", node_embedding_service.run_embedding_task)
+    task_registry.register("process_document", run_process_document_task)
+
+
+def _ensure_job_types() -> None:
+    """Ensure required job type rows exist in JobTypes so Jobs.job_type FK does not fail."""
+    from src.database.connection import SilentSessionLocal
+    from src.database.models import Jobtypes
+
+    required = ("process_document", "node_content_embedding")
+    db = SilentSessionLocal()
+    try:
+        for job_type_id in required:
+            if db.query(Jobtypes).filter(Jobtypes.Job_type_id == job_type_id).first() is None:
+                db.add(Jobtypes(Job_type_id=job_type_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 class TrailingSlashMiddleware(BaseHTTPMiddleware):
@@ -31,38 +62,6 @@ class TrailingSlashMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: startup and shutdown logic."""
-    # === STARTUP ===
-    from src.services.job_service import job_service
-    from src.services.task_registry import task_registry
-    from src.services.job_daemon import job_daemon
-    from src.services.rag.node_embedding_service import NodeEmbeddingService
-
-    # 1. Register task handlers
-    node_embedding_svc = NodeEmbeddingService()
-    task_registry.register(
-        "node_content_embedding",
-        node_embedding_svc.run_embedding_task
-    )
-
-    # 2. Recover orphaned jobs (PROCESSING -> PENDING after crash)
-    recovered = job_service.recover_orphaned_jobs()
-    if recovered:
-        import logging
-        logging.getLogger(__name__).warning(f"Recovered {recovered} orphaned jobs")
-
-    # 3. Start Job Daemon
-    job_daemon.start()
-
-    yield
-
-    # === SHUTDOWN ===
-    job_daemon.stop()
-    job_service.shutdown()
-
-
 def create_app() -> FastAPI:
     """Application factory"""
 
@@ -74,8 +73,15 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         root_path="/llm",
         redirect_slashes=False,
-        lifespan=lifespan
     )
+
+    @app.on_event("startup")
+    def startup_register_tasks():
+        _ensure_job_types()
+        _register_job_tasks()
+        if getattr(settings, "job_daemon_auto_start", True):
+            from src.services.job_daemon import job_daemon
+            job_daemon.start()
 
     # CORS middleware
     if settings.environment == "production":
@@ -106,6 +112,8 @@ def create_app() -> FastAPI:
     app.include_router(metadata_router)
     app.include_router(example_gen_router)
     app.include_router(job_router)
+    app.include_router(rag_router)
+    app.include_router(document_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)

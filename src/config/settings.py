@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     job_poll_interval: int = Field(default=5, alias="JOB_POLL_INTERVAL")
     job_worker_break_off_time: int = Field(default=30, alias="JOB_WORKER_BREAK_OFF_TIME")
     job_daemon_verbose: bool = Field(default=False, alias="JOB_DAEMON_VERBOSE")
+    job_daemon_auto_start: bool = Field(default=True, alias="JOB_DAEMON_AUTO_START")
+
+    # File / Document upload
+    upload_dir: str = Field(default="uploads", alias="UPLOAD_DIR")
 
     class Config:
         env_file = ".env"

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from uuid import UUID
 
+from pydantic import BaseModel, Field
+
 
 class RAGStage(str, Enum):
     """RAG Pipeline stages for job tracking"""
@@ -85,6 +87,16 @@ class NodeEmbeddingResult:
     processing_time_seconds: float
 
 
+@dataclass
+class RAGSearchResult:
+    """Single chunk result from semantic search (for RAG and citations)."""
+    node_id: UUID
+    chunk_id: UUID
+    node_content_md_chunk: str
+    similarity: float  # 1 - cosine_distance (higher = more similar)
+    node_vector_chunk_order: Optional[int] = None
+
+
 # ============================================================================
 # Constants
 # ============================================================================
@@ -102,3 +114,30 @@ EMBEDDING_BATCH_SIZE = 50   # Number of texts per API call
 # Search configuration
 DEFAULT_SIMILARITY_THRESHOLD = 0.7
 DEFAULT_SEARCH_LIMIT = 10
+
+
+# ============================================================================
+# Pydantic models for RAG Search API
+# ============================================================================
+
+class RAGSearchRequest(BaseModel):
+    """Request body for semantic search over node chunks."""
+    query: str = Field(..., min_length=1, description="Natural language search query")
+    limit: int = Field(default=DEFAULT_SEARCH_LIMIT, ge=1, le=50, description="Max chunks to return")
+    min_similarity: Optional[float] = Field(default=DEFAULT_SIMILARITY_THRESHOLD, ge=0, le=1)
+    scope_node_ids: Optional[List[UUID]] = Field(default=None, description="Restrict search to these node IDs")
+
+
+class RAGSearchResultItem(BaseModel):
+    """Single search result for API response."""
+    node_id: UUID
+    chunk_id: UUID
+    node_content_md_chunk: str
+    similarity: float
+    node_vector_chunk_order: Optional[int] = None
+
+
+class RAGSearchResponse(BaseModel):
+    """Response for semantic search."""
+    count: int
+    results: List[RAGSearchResultItem]

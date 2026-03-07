@@ -95,6 +95,7 @@ class JobResponse(BaseResponseModel):
     job_end_time: Optional[datetime] = None
     job_actived: Optional[bool] = None
     job_result: Optional[str]
+    job_error_log: Optional[str] = None
     created_at: Optional[datetime]
     created_by: Optional[UUID]
     updated_at: Optional[datetime]
@@ -122,6 +123,7 @@ class JobWithMetadataResponse(BaseResponseModel):
     job_end_time: Optional[datetime] = None
     job_actived: Optional[bool] = None
     job_result: Optional[str]
+    job_error_log: Optional[str] = None
     created_at: Optional[datetime]
     created_by: Optional[UUID]
     updated_at: Optional[datetime]

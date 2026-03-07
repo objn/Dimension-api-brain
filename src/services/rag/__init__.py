@@ -10,6 +10,7 @@ from src.dto.rag_dto import (
     ExistingChunk,
     EmbeddingResult,
     NodeEmbeddingResult,
+    RAGSearchResult,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     EMBEDDING_MODEL,
@@ -20,6 +21,7 @@ from src.dto.rag_dto import (
 from .chunking import ChunkingService, chunking_service
 from .embedding import EmbeddingService, embedding_service
 from .node_embedding_service import NodeEmbeddingService, node_embedding_service
+from .semantic_search_service import SemanticSearchService, semantic_search_service
 
 __all__ = [
     # Types & Constants
@@ -30,6 +32,7 @@ __all__ = [
     "ExistingChunk",
     "EmbeddingResult",
     "NodeEmbeddingResult",
+    "RAGSearchResult",
     "CHUNK_SIZE",
     "CHUNK_OVERLAP",
     "EMBEDDING_MODEL",
@@ -44,4 +47,6 @@ __all__ = [
     "embedding_service",
     "NodeEmbeddingService",
     "node_embedding_service",
+    "SemanticSearchService",
+    "semantic_search_service",
 ]
