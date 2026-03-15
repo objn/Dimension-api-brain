@@ -449,6 +449,75 @@ async def update_job_status(
 # ============================================================================
 
 @router.patch(
+    "/{job_id}/set-pending",
+    status_code=status.HTTP_200_OK,
+    summary="Set job status to PENDING",
+    description="Set the job status to PENDING by job ID. No request body required. Only job owner can call."
+)
+async def set_job_pending(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """Set job status to PENDING so it can be picked up by the daemon again."""
+    try:
+        repo = JobRepository(db)
+        job = repo.find_one_by_id(job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found"
+            )
+
+        if job.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to update this job"
+            )
+
+        now = datetime.utcnow()
+        updated_job = repo.update_by_id(job_id, {
+            "job_result": "PENDING",
+            "job_actived": False,
+            "job_end_time": None,
+            "updated_at": now,
+            "updated_by": user_id
+        })
+
+        metadata_response = None
+        existing_metadata = db.query(Metadatas).filter(
+            Metadatas.metadata_of == job_id
+        ).first()
+        if existing_metadata:
+            metadata_response = MetadataResponse.model_validate(existing_metadata)
+
+        response = JobWithMetadataResponse(
+            job_id=updated_job.job_id,
+            job_type=updated_job.job_type,
+            job_start_time=updated_job.job_start_time,
+            job_end_time=updated_job.job_end_time,
+            job_actived=updated_job.job_actived,
+            job_result=updated_job.job_result,
+            job_error_log=getattr(updated_job, "job_error_log", None),
+            created_at=updated_job.created_at,
+            created_by=updated_job.created_by,
+            updated_at=updated_job.updated_at,
+            updated_by=updated_job.updated_by,
+            metadata=metadata_response
+        )
+        return success_response(response.model_dump())
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error setting job to PENDING: {str(e)}"
+        )
+
+
+@router.patch(
     "/{job_id}",
     status_code=status.HTTP_200_OK,
     summary="Handle job actions (start/restart/stop)",

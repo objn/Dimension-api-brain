@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Dimension API Brain",
-    "description": "LLM Service API: agents, conversations, chat (single + panel), RAG, document import, jobs.",
+    "description": "LLM Service API: agents, conversations, chat, RAG, documents, jobs, metadatas, example gen, LLM suggest relation. All endpoints require Bearer token (JWT) except health/root.\n\n► ใช้ token จาก Globals: ใน Postman ไปที่ Manage Environments (ไอคอนตา) → Globals → Add ตัวแปรชื่อ token ค่าเป็น JWT แล้ว Save แล้ว collection นี้จะใช้ {{token}} จาก Globals ให้อัตโนมัติ",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -12,12 +12,16 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8000" },
-    { "key": "token", "value": "" },
     { "key": "workspace_id", "value": "" },
     { "key": "conversation_id", "value": "" },
     { "key": "agent_id", "value": "" },
     { "key": "file_id", "value": "" },
-    { "key": "job_id", "value": "" }
+    { "key": "job_id", "value": "" },
+    { "key": "metadata_id", "value": "" },
+    { "key": "entity_id", "value": "" },
+    { "key": "node_a", "value": "" },
+    { "key": "node_b", "value": "" },
+    { "key": "agent_name_search", "value": "Assistant" }
   ],
   "item": [
     {
@@ -27,7 +31,9 @@
           "name": "Get all agents",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/agents"
+            "header": [],
+            "url": "{{base_url}}/agents",
+            "description": "Optional query: limit"
           }
         },
         {
@@ -38,15 +44,53 @@
           }
         },
         {
+          "name": "Search agents by name",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/search/{{agent_name_search}}"
+          }
+        },
+        {
           "name": "Create agent",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agent_name\": \"My Agent\",\n  \"agent_desc\": \"Description\",\n  \"agent_prompt\": \"You are a helpful assistant.\"\n}"
+              "raw": "{\n  \"agent_name\": \"My Agent\",\n  \"agent_desc\": \"Description\",\n  \"agent_prompt\": \"You are a helpful assistant.\",\n  \"agent_profile_image\": null,\n  \"default_llm_provider\": \"openai\"\n}"
             },
             "url": "{{base_url}}/agents"
+          }
+        },
+        {
+          "name": "Update agent",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_name\": \"Updated Agent\",\n  \"agent_desc\": \"Updated description\",\n  \"agent_prompt\": \"Updated prompt\",\n  \"default_llm_provider\": \"gemini\"\n}"
+            },
+            "url": "{{base_url}}/agents/{{agent_id}}"
+          }
+        },
+        {
+          "name": "Patch agent",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_name\": \"Patched name\"\n}"
+            },
+            "url": "{{base_url}}/agents/{{agent_id}}"
+          }
+        },
+        {
+          "name": "Delete agent",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/agents/{{agent_id}}"
           }
         }
       ]
@@ -54,6 +98,21 @@
     {
       "name": "Conversations",
       "item": [
+        {
+          "name": "Get all conversations",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/conversations",
+            "description": "Optional: limit, sort_by, sort_order"
+          }
+        },
+        {
+          "name": "Get conversation by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/conversations/{{conversation_id}}"
+          }
+        },
         {
           "name": "Create conversation",
           "request": {
@@ -67,17 +126,34 @@
           }
         },
         {
-          "name": "Get all conversations",
+          "name": "Update conversation (rename)",
           "request": {
-            "method": "GET",
-            "url": "{{base_url}}/conversations"
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_topic\": \"New topic title\"\n}"
+            },
+            "url": "{{base_url}}/conversations/{{conversation_id}}"
           }
         },
         {
-          "name": "Get conversation by ID",
+          "name": "Delete conversation",
           "request": {
-            "method": "GET",
+            "method": "DELETE",
             "url": "{{base_url}}/conversations/{{conversation_id}}"
+          }
+        },
+        {
+          "name": "Add message to conversation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"User message text\",\n  \"sender_role\": \"USER\"\n}"
+            },
+            "url": "{{base_url}}/conversations/messages"
           }
         }
       ]
@@ -95,7 +171,7 @@
               "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": { \"nodes\": [], \"files\": [] },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
             },
             "url": "{{base_url}}/conversations/chat",
-            "description": "use_rag: search node_vector by similarity, top-k chunks (rag_top_k). attach: nodes/files get citations. max_reasoning_loops: 2+ for step-by-step reasoning."
+            "description": "use_rag: search node_vector; attach: nodes/files for citations; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden."
           }
         },
         {
@@ -108,6 +184,66 @@
               "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"Your question\",\n  \"agent_ids\": [\"{{agent_id}}\"],\n  \"llm_provider\": \"openai\",\n  \"max_history\": 10\n}"
             },
             "url": "{{base_url}}/conversations/chat/panel"
+          }
+        },
+        {
+          "name": "Record tool call",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"tool_name\": \"calculator\",\n  \"tool_input\": \"2 + 2\",\n  \"tool_output\": \"4\"\n}"
+            },
+            "url": "{{base_url}}/conversations/chat/tool"
+          }
+        },
+        {
+          "name": "Respond after tool call",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/conversations/chat/tool/respond?conversation_id={{conversation_id}}&agent_id={{agent_id}}&llm_provider=openai&max_history=10",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "chat", "tool", "respond"],
+              "query": [
+                { "key": "conversation_id", "value": "{{conversation_id}}" },
+                { "key": "agent_id", "value": "{{agent_id}}" },
+                { "key": "llm_provider", "value": "openai" },
+                { "key": "max_history", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create system message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"System notice or error text\",\n  \"is_error\": false\n}"
+            },
+            "url": "{{base_url}}/conversations/chat/system"
+          }
+        }
+      ]
+    },
+    {
+      "name": "LLM",
+      "item": [
+        {
+          "name": "Suggest relation (between two nodes)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"node_a\": \"{{node_a}}\",\n  \"node_b\": \"{{node_b}}\"\n}"
+            },
+            "url": "{{base_url}}/suggest-relation",
+            "description": "Reads content of node_a and node_b, returns 3-5 suggested relations (relation_type_id + explanation) for user to choose."
           }
         }
       ]
@@ -122,7 +258,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"natural language search query\",\n  \"limit\": 10,\n  \"min_similarity\": 0.7\n}"
+              "raw": "{\n  \"query\": \"natural language search query\",\n  \"limit\": 10,\n  \"min_similarity\": 0.7,\n  \"scope_node_ids\": null\n}"
             },
             "url": "{{base_url}}/rag/search"
           }
@@ -143,11 +279,11 @@
               ]
             },
             "url": "{{base_url}}/documents/import",
-            "description": "Upload file (default: upload only, no process job). Add ?auto_process=true to start processing and get job_id in response; then poll GET /jobs/{job_id}."
+            "description": "Upload file (default: upload only). Add ?auto_process=true to start processing and get job_id."
           }
         },
         {
-          "name": "Import document (with auto-process)",
+          "name": "Import document (auto-process)",
           "request": {
             "method": "POST",
             "body": {
@@ -156,22 +292,7 @@
                 { "key": "file", "type": "file", "src": "" }
               ]
             },
-            "url": "{{base_url}}/documents/import?auto_process=true",
-            "description": "Upload and start process job. Response includes file_id and job_id. Poll GET /jobs/{job_id} for status; on SUCCESS metadata has node_id, node_name, embedding_job_id."
-          }
-        },
-        {
-          "name": "Import document (upload only)",
-          "request": {
-            "method": "POST",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                { "key": "file", "type": "file", "src": "" }
-              ]
-            },
-            "url": "{{base_url}}/documents/import?auto_process=false",
-            "description": "Explicit upload only (same as default). Call Process document to start processing."
+            "url": "{{base_url}}/documents/import?auto_process=true"
           }
         },
         {
@@ -184,7 +305,7 @@
               "raw": "{\n  \"reformat_options\": [\"summarize\", \"to_bullet_points\"],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"use_llm_extract\": false,\n  \"max_pages_per_call\": 5,\n  \"translate_to\": null\n}"
             },
             "url": "{{base_url}}/documents/{{file_id}}/process",
-            "description": "Register a process job (202 Accepted). Poll GET /jobs/{job_id} for status. On SUCCESS, metadata contains node_id, node_name, embedding_job_id."
+            "description": "202 Accepted. Poll GET /jobs/{job_id} for status. On SUCCESS metadata has node_id, node_name, embedding_job_id."
           }
         }
       ]
@@ -193,26 +314,168 @@
       "name": "Jobs",
       "item": [
         {
-          "name": "Get job (full)",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/jobs/{{job_id}}",
-            "description": "Full job record and metadata. For process_document jobs, when status is SUCCESS metadata includes node_id, node_name, embedding_job_id."
-          }
-        },
-        {
-          "name": "Get job status",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/jobs/{{job_id}}/status",
-            "description": "Lightweight status and optional progress (stage, progress)."
-          }
-        },
-        {
           "name": "Get all jobs",
           "request": {
             "method": "GET",
+            "url": "{{base_url}}/jobs",
+            "description": "Query: limit, metadata=true, actived=true|false, result=PENDING|SUCCESS|..."
+          }
+        },
+        {
+          "name": "Get job by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/jobs/{{job_id}}",
+            "description": "Full job + metadata. For process_document SUCCESS: metadata has node_id, node_name, embedding_job_id."
+          }
+        },
+        {
+          "name": "Create job",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job_type\": \"node_content_embedding\",\n  \"job_start_time\": null,\n  \"job_result\": \"PENDING\",\n  \"metadata_json\": {},\n  \"content_to_summarize\": null\n}"
+            },
             "url": "{{base_url}}/jobs"
+          }
+        },
+        {
+          "name": "Update job status and metadata",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job_result\": \"SUCCESS\",\n  \"metadata_json\": null,\n  \"content_to_summarize\": null\n}"
+            },
+            "url": "{{base_url}}/jobs/{{job_id}}"
+          }
+        },
+        {
+          "name": "Set job to PENDING",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/jobs/{{job_id}}/set-pending",
+            "description": "No body. Sets job_result=PENDING, job_actived=false, job_end_time=null so daemon can pick it up again."
+          }
+        },
+        {
+          "name": "Handle job (start / restart / stop)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"handleJobTo\": \"start\",\n  \"reason\": \"User requested start\"\n}"
+            },
+            "url": "{{base_url}}/jobs/{{job_id}}",
+            "description": "handleJobTo: start (PENDING->PROCESSING), restart (->PENDING), stop (->SKIP). reason optional."
+          }
+        },
+        {
+          "name": "Delete job",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/jobs/{{job_id}}"
+          }
+        },
+        {
+          "name": "Get daemon status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/jobs/daemon/status"
+          }
+        },
+        {
+          "name": "Start daemon",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/jobs/daemon/start"
+          }
+        },
+        {
+          "name": "Stop daemon",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/jobs/daemon/stop"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metadatas",
+      "item": [
+        {
+          "name": "Get all metadatas",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/metadatas",
+            "description": "Optional: limit"
+          }
+        },
+        {
+          "name": "Get metadata by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/metadatas/{{metadata_id}}"
+          }
+        },
+        {
+          "name": "Get metadatas by entity ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/metadatas/by-entity/{{entity_id}}"
+          }
+        },
+        {
+          "name": "Create metadata",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metadata_of\": \"{{entity_id}}\",\n  \"metadata_json\": {\"key\": \"value\"},\n  \"content_to_summarize\": null\n}"
+            },
+            "url": "{{base_url}}/metadatas"
+          }
+        },
+        {
+          "name": "Update metadata",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metadata_json\": {\"key\": \"updated\"},\n  \"content_to_summarize\": null\n}"
+            },
+            "url": "{{base_url}}/metadatas/{{metadata_id}}"
+          }
+        },
+        {
+          "name": "Delete metadata",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/metadatas/{{metadata_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Example Generation",
+      "item": [
+        {
+          "name": "Generate example data",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_name\": \"Users\",\n  \"prompt\": \"Generate 5 sample users with realistic names and emails\",\n  \"execute_insert\": false,\n  \"agent_prompt\": null\n}"
+            },
+            "url": "{{base_url}}/examplegen",
+            "description": "AI generates sample data and optional INSERT. execute_insert=true runs INSERT only (no DELETE/DROP)."
           }
         }
       ]

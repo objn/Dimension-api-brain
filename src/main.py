@@ -12,6 +12,7 @@ from src.controllers import (
     job_router,
     rag_router,
     document_router,
+    llm_router,
 )
 
 
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(job_router)
     app.include_router(rag_router)
     app.include_router(document_router)
+    app.include_router(llm_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)

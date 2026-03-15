@@ -153,6 +153,7 @@ async def create_agent(
             agent_desc=request.agent_desc,
             agent_prompt=request.agent_prompt,
             agent_profile_image=request.agent_profile_image,
+            default_llm_provider=request.default_llm_provider,
             created_at=datetime.utcnow(),
             created_by=user_id,
             updated_at=datetime.utcnow(),
@@ -228,7 +229,6 @@ async def update_agent(
 
 @router.patch(
     "/{agent_id}",
-    response_model=AgentResponse,
     status_code=status.HTTP_200_OK,
     summary="Partially update agent",
     description="Partially update an agent (only own agents, not public agents)"

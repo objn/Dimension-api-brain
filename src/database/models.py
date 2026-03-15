@@ -20,6 +20,8 @@ class Agents(Base):
     agent_name = Column(String(255))
     agent_desc = Column(Text)
     agent_prompt = Column(Text)
+    # Add column in DB if missing: ALTER TABLE "Agents" ADD COLUMN default_llm_provider VARCHAR(32) NULL;
+    default_llm_provider = Column(String(32), nullable=True)
     created_at = Column(DateTime)
     created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)

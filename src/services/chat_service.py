@@ -173,6 +173,13 @@ class ChatService:
         agent = self.agent_repo.find_one_by_id(agent_id)
         if not agent:
             raise ValueError(f"Agent {agent_id} not found")
+
+        # Use agent's default LLM provider when request did not specify one
+        effective_provider: LLMProviderType = (
+            getattr(agent, "default_llm_provider", None) or llm_provider or "openai"
+        )
+        if effective_provider not in ("openai", "gemini", "anthropic"):
+            effective_provider = "openai"
         
         # 1. Store USER message (immutable)
         user_msg = self.create_message(
@@ -293,7 +300,7 @@ class ChatService:
             user_message=user_message,
             topic=conversation.conversation_topic,
             history=context,
-            provider=llm_provider,
+            provider=effective_provider,
             system_prompt=system_prompt,
             k=MAX_HISTORY,
             max_reasoning_loops=max_reasoning_loops,
@@ -441,6 +448,12 @@ class ChatService:
         agent = self.agent_repo.find_one_by_id(agent_id)
         if not agent:
             raise ValueError(f"Agent {agent_id} not found")
+
+        effective_provider: LLMProviderType = (
+            getattr(agent, "default_llm_provider", None) or llm_provider or "openai"
+        )
+        if effective_provider not in ("openai", "gemini", "anthropic"):
+            effective_provider = "openai"
         
         context = self.get_conversation_context(conversation_id, max_history)
         
@@ -448,7 +461,7 @@ class ChatService:
         agent_response = LLM.chat_with_history(
             user_message="Based on the tool output above, please provide a response.",
             history=context,
-            provider=llm_provider,
+            provider=effective_provider,
             system_prompt=agent.agent_prompt,
             k=max_history
         )
@@ -487,11 +500,16 @@ class ChatService:
             agent = self.agent_repo.find_one_by_id(agent_id)
             if not agent:
                 continue
+            effective_provider: LLMProviderType = (
+                getattr(agent, "default_llm_provider", None) or llm_provider or "openai"
+            )
+            if effective_provider not in ("openai", "gemini", "anthropic"):
+                effective_provider = "openai"
             agent_content = LLM.chat_with_history(
                 user_message=user_message,
                 topic=conversation.conversation_topic,
                 history=context,
-                provider=llm_provider,
+                provider=effective_provider,
                 system_prompt=agent.agent_prompt,
                 k=max_history
             )
