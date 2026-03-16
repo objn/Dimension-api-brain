@@ -83,7 +83,8 @@ class ChatService:
         conversation_id: UUID,
         content: str,
         sender_role: SenderRole,
-        created_by: UUID
+        created_by: UUID,
+        metadatas: Optional[Dict[str, Any]] = None,
     ) -> Messages:
         """
         Create a new immutable message in the conversation.
@@ -94,6 +95,7 @@ class ChatService:
             conversation_id=conversation_id,
             message_content=content,
             sender_role=sender_role.value,
+            metadatas=metadatas,
             created_by=created_by,
             created_at=datetime.utcnow(),
             updated_by=created_by,
@@ -215,15 +217,29 @@ class ChatService:
         convo_parts: List[str] = []
         rag_parts: List[str] = []
 
+        # Collect attachment details for USER message metadatas (built inline)
+        node_attachments: List[Dict[str, Any]] = []
+        file_attachments: List[Dict[str, Any]] = []
+        conversation_attachments: List[Dict[str, Any]] = []
+
         # ── Attached files ──────────────────────────────────────────────
         for file_id in attach_files:
             file_entity = self.file_repo.find_one_by_id(file_id)
             if not file_entity:
                 logger.warning("Attach file %s: not found in database, skipping", file_id)
                 continue
+
+            fname = file_entity.file_name or "file"
+            file_detail = {
+                "file_id": str(file_entity.file_id),
+                "file_name": fname,
+                "file_size": file_entity.file_size,
+                "mime_type": file_entity.mime_type or "",
+            }
+            file_attachments.append(file_detail)
+
             try:
                 mime = (file_entity.mime_type or "").lower()
-                fname = file_entity.file_name or "file"
 
                 if mime.startswith("image/") and file_entity.file_path:
                     with open(file_entity.file_path, "rb") as f:
@@ -234,12 +250,7 @@ class ChatService:
                         citations.append({
                             "index": index,
                             "source_type": "file",
-                            "file": {
-                                "file_id": str(file_entity.file_id),
-                                "file_name": fname,
-                                "file_size": file_entity.file_size,
-                                "mime_type": file_entity.mime_type or "",
-                            },
+                            "file": file_detail,
                             "snippet": f"[Image: {fname}]",
                         })
                         index += 1
@@ -257,12 +268,7 @@ class ChatService:
                     citations.append({
                         "index": index,
                         "source_type": "file",
-                        "file": {
-                            "file_id": str(file_entity.file_id),
-                            "file_name": fname,
-                            "file_size": file_entity.file_size,
-                            "mime_type": file_entity.mime_type or "",
-                        },
+                        "file": file_detail,
                         "snippet": snippet,
                     })
                     index += 1
@@ -278,10 +284,17 @@ class ChatService:
             if not node:
                 logger.warning("Attach node %s: not found in database, skipping", nid)
                 continue
+
+            nname = node.node_name or str(nid)
+            node_attachments.append({
+                "node_id": str(node.node_id),
+                "node_name": nname,
+                "node_desc": node.node_desc or "",
+            })
+
             if not node.node_content_md:
                 logger.warning("Attach node %s (%s): node_content_md is empty, skipping", nid, node.node_name)
                 continue
-            nname = node.node_name or str(nid)
             ndesc = f" – {node.node_desc}" if node.node_desc else ""
             snippet = (node.node_content_md.strip()[:300] + "…") if len(node.node_content_md.strip()) > 300 else node.node_content_md.strip()
             node_parts.append(f"[{index}] Node: \"{nname}\"{ndesc}\n{node.node_content_md.strip()}")
@@ -304,6 +317,11 @@ class ChatService:
             except (PermissionError, ValueError):
                 logger.warning("Attach conversation %s: permission denied or not found, skipping", cid)
                 continue
+
+            conversation_attachments.append({
+                "conversation_id": str(convo.conversation_id),
+                "conversation_topic": convo.conversation_topic or "",
+            })
 
             history = self.get_conversation_context(
                 conversation_id=cid,
@@ -374,21 +392,32 @@ class ChatService:
                     })
                     index += 1
 
+        # ── Save attachments to USER message metadatas ──────────────────
+        attachments: Dict[str, Any] = {
+            "nodes": node_attachments,
+            "files": file_attachments,
+            "conversations": conversation_attachments,
+        }
+        if node_attachments or file_attachments or conversation_attachments:
+            user_msg.metadatas = {"attachments": attachments}
+            self.db.add(user_msg)
+            self.db.flush()
+
         # ── Build structured reference context ──────────────────────────
         system_prompt = agent.agent_prompt or ""
 
         ref_sections: List[str] = []
         if image_names:
             names = ", ".join(f'"{n}"' for n in image_names)
-            ref_sections.append(f"📷 ATTACHED IMAGES (sent as visual input): {names}\nAnalyze the images provided and use them to answer the user's question.")
+            ref_sections.append(f"ATTACHED IMAGES (sent as visual input): {names}\nAnalyze the images provided and use them to answer the user's question.")
         if file_parts:
-            ref_sections.append("📄 ATTACHED FILES (text content extracted):\n" + "\n\n".join(file_parts))
+            ref_sections.append("ATTACHED FILES (text content extracted):\n" + "\n\n".join(file_parts))
         if node_parts:
-            ref_sections.append("📝 ATTACHED NOTES/NODES (knowledge base entries):\n" + "\n\n".join(node_parts))
+            ref_sections.append("ATTACHED NOTES/NODES (knowledge base entries):\n" + "\n\n".join(node_parts))
         if convo_parts:
-            ref_sections.append("💬 ATTACHED CONVERSATIONS (previous chat history):\n" + "\n\n".join(convo_parts))
+            ref_sections.append("ATTACHED CONVERSATIONS (previous chat history):\n" + "\n\n".join(convo_parts))
         if rag_parts:
-            ref_sections.append("🔍 RELATED KNOWLEDGE (retrieved by similarity search):\n" + "\n\n".join(rag_parts))
+            ref_sections.append("RELATED KNOWLEDGE (retrieved by similarity search):\n" + "\n\n".join(rag_parts))
 
         reference_context: Optional[str] = None
         if ref_sections:
@@ -428,12 +457,14 @@ class ChatService:
                 reference_context=reference_context,
             )
         
-        # 5. Store AGENT response (immutable)
+        # 5. Store AGENT response with citations in metadatas
+        agent_metadatas = {"citations": citations} if citations else None
         agent_msg = self.create_message(
             conversation_id=conversation_id,
             content=agent_response_content,
             sender_role=SenderRole.AGENT,
-            created_by=user_id
+            created_by=user_id,
+            metadatas=agent_metadatas,
         )
         
         # Update conversation timestamp
@@ -441,57 +472,6 @@ class ChatService:
             "updated_at": datetime.utcnow(),
             "updated_by": user_id
         })
-
-        # Build attachment details for response
-        node_attachments: List[Dict[str, Any]] = []
-        file_attachments: List[Dict[str, Any]] = []
-        conversation_attachments: List[Dict[str, Any]] = []
-
-        if attach_nodes:
-            for nid in attach_nodes:
-                node = self.node_repo.find_one_by_id(nid)
-                if not node:
-                    continue
-                node_attachments.append(
-                    {
-                        "node_id": str(node.node_id),
-                        "node_name": node.node_name or str(node.node_id),
-                        "node_desc": node.node_desc or "",
-                    }
-                )
-
-        if attach_files:
-            for file_id in attach_files:
-                file_entity = self.file_repo.find_one_by_id(file_id)
-                if not file_entity:
-                    continue
-                file_attachments.append(
-                    {
-                        "file_id": str(file_entity.file_id),
-                        "file_name": file_entity.file_name or "file",
-                        "file_size": file_entity.file_size,
-                        "mime_type": file_entity.mime_type or "",
-                    }
-                )
-
-        if attach_conversations:
-            for cid in attach_conversations:
-                try:
-                    convo = self._check_conversation_ownership(cid, user_id)
-                except (PermissionError, ValueError):
-                    continue
-                conversation_attachments.append(
-                    {
-                        "conversation_id": str(convo.conversation_id),
-                        "conversation_topic": convo.conversation_topic or "",
-                    }
-                )
-
-        attachments: Dict[str, Any] = {
-            "nodes": node_attachments,
-            "files": file_attachments,
-            "conversations": conversation_attachments,
-        }
 
         return ChatResponse(
             conversation_id=conversation_id,

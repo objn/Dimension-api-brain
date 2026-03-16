@@ -109,6 +109,7 @@ class Messages(Base):
     conversation_id = Column(UUID(as_uuid=True), ForeignKey('Conversations.conversation_id'))
     message_content = Column(Text)
     sender_role = Column(String(16), ForeignKey('Roles.role_id'))
+    metadatas = Column("metadatas", JSON, nullable=True)
     created_at = Column(DateTime)
     created_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     updated_at = Column(DateTime)

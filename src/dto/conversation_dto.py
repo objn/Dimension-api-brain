@@ -152,6 +152,7 @@ class MessageResponse(BaseResponseModel):
     conversation_id: Optional[UUID]
     message_content: Optional[str]
     sender_role: Optional[str]
+    metadatas: Optional[dict] = None
     created_at: Optional[datetime]
     created_by: Optional[UUID]
     updated_at: Optional[datetime]
@@ -164,7 +165,8 @@ class MessageResponse(BaseResponseModel):
                 "message_id": "123e4567-e89b-12d3-a456-426614174002",
                 "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
                 "message_content": "Hello, how can I help you today?",
-                "sender_role": "assistant",
+                "sender_role": "AGENT",
+                "metadatas": {"citations": [{"index": 1, "source_type": "node", "snippet": "..."}]},
                 "created_at": "2026-02-01T12:00:00Z",
                 "created_by": "123e4567-e89b-12d3-a456-426614174001",
                 "updated_at": "2026-02-01T12:00:00Z",
