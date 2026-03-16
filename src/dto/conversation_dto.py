@@ -362,6 +362,13 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="When use_rag was true: sources (node_id, chunk_id, snippet) used for the response"
     )
+    attachments: Optional[dict] = Field(
+        default_factory=dict,
+        description=(
+            "Details about any attached entities used for context. "
+            "Structure: {'nodes': [...], 'files': [...], 'conversations': [...]}"
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -379,7 +386,31 @@ class ChatResponse(BaseModel):
                 },
                 "agent_id": "123e4567-e89b-12d3-a456-426614174999",
                 "agent_name": "Research Assistant",
-                "messages_in_context": 5
+                "messages_in_context": 5,
+                "citations": [],
+                "attachments": {
+                    "nodes": [
+                        {
+                            "node_id": "123e4567-e89b-12d3-a456-426614174100",
+                            "node_name": "ML Overview",
+                            "node_desc": "High-level machine learning notes"
+                        }
+                    ],
+                    "files": [
+                        {
+                            "file_id": "123e4567-e89b-12d3-a456-426614174200",
+                            "file_name": "ml_notes.pdf",
+                            "mime_type": "application/pdf",
+                            "file_size": 102400
+                        }
+                    ],
+                    "conversations": [
+                        {
+                            "conversation_id": "123e4567-e89b-12d3-a456-426614174300",
+                            "conversation_topic": "Previous ML discussion"
+                        }
+                    ]
+                }
             }
         }
 
@@ -433,3 +464,26 @@ class ChatHistoryResponse(BaseModel):
                 }
             }
         }
+
+
+class AgentSearchItem(BaseModel):
+    """Minimal agent fields for global search results."""
+    agent_id: UUID
+    agent_name: Optional[str]
+    agent_desc: Optional[str]
+    default: Optional[bool] = None
+
+
+class ChatHistorySearchItem(BaseModel):
+    """Minimal conversation/chat history fields for global search results."""
+    conversation_id: UUID
+    conversation_topic: Optional[str]
+    updated_at: Optional[datetime]
+    last_message_preview: Optional[str] = None
+
+
+class GlobalSearchResponse(BaseModel):
+    """Combined exact-search results for agents and chat history."""
+    query: str
+    agents: List[AgentSearchItem]
+    conversations: List[ChatHistorySearchItem]

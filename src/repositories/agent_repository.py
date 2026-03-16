@@ -48,6 +48,13 @@ class AgentRepository(BaseRepository[Agents]):
             ((Agents.created_by == user_id) | (Agents.created_by == PUBLIC_AGENT_UUID)) &
             (Agents.agent_name.ilike(f"%{name}%"))
         ).all()
+
+    def search_accessible_by_user_exact(self, user_id: UUID, name: str) -> List[Agents]:
+        """Exact (case-insensitive) search by agent_name among accessible agents (own + public)."""
+        return self.db.query(Agents).filter(
+            ((Agents.created_by == user_id) | (Agents.created_by == PUBLIC_AGENT_UUID)) &
+            (Agents.agent_name.ilike(f"{name}"))
+        ).all()
     
     def is_accessible_by_user(self, agent_id: UUID, user_id: UUID) -> bool:
         """Check if an agent is accessible by a user"""
@@ -73,3 +80,9 @@ class AgentRepository(BaseRepository[Agents]):
             Relations.parent_id == workspace_id,
             Relations.relation_type_id.in_(["WORKSPACE_AGENT", "CONTAINS"])
         ).all()
+
+    def is_agent_default(self, agent_id: UUID) -> bool:
+        """Check if an agent is the default agent"""
+        if agent_id == PUBLIC_AGENT_UUID:
+            return True
+        return False

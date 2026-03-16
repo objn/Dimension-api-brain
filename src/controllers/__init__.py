@@ -6,6 +6,7 @@ from .job_controller import router as job_router
 from .rag_controller import router as rag_router
 from .document_controller import router as document_router
 from .llm_controller import router as llm_router
+from .search_controller import router as search_router
 
 __all__ = [
     "agent_router",
@@ -16,4 +17,5 @@ __all__ = [
     "rag_router",
     "document_router",
     "llm_router",
+    "search_router"
 ]

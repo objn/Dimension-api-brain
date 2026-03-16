@@ -30,6 +30,19 @@ router = APIRouter(
 )
 
 
+def _to_agent_response_with_default(agent: Agents) -> AgentResponse:
+    """
+    Map an Agents ORM instance to AgentResponse and compute the `default` flag.
+    
+    Rules:
+    - default = True  when created_by == PUBLIC_AGENT_UUID (public agents)
+    - default = False otherwise
+    """
+    response = AgentResponse.model_validate(agent)
+    response.default = agent.created_by == PUBLIC_AGENT_UUID
+    return response
+
+
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -52,7 +65,7 @@ async def get_all_agents(
 
         result = AgentListResponse(
             count=len(agents),
-            agents=[AgentResponse.model_validate(agent) for agent in agents]
+            agents=[_to_agent_response_with_default(agent) for agent in agents]
         )
         return success_response(result.model_dump())
     except Exception as e:
@@ -91,7 +104,7 @@ async def get_agent_by_id(
                 detail="You don't have permission to access this agent"
             )
 
-        result = AgentResponse.model_validate(agent)
+        result = _to_agent_response_with_default(agent)
         return success_response(result.model_dump())
     except HTTPException:
         raise
@@ -163,7 +176,7 @@ async def create_agent(
         # Save to database
         created_agent = repo.create(new_agent)
 
-        result = AgentResponse.model_validate(created_agent)
+        result = _to_agent_response_with_default(created_agent)
         return success_response(result.model_dump())
     except Exception as e:
         raise HTTPException(
@@ -216,7 +229,7 @@ async def update_agent(
         # Update in database
         updated_agent = repo.update_by_id(agent_id, update_data)
 
-        result = AgentResponse.model_validate(updated_agent)
+        result = _to_agent_response_with_default(updated_agent)
         return success_response(result.model_dump())
     except HTTPException:
         raise

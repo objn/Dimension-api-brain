@@ -216,6 +216,100 @@ def chat_with_history(
     return response.content.strip()
 
 
+def chat_with_history_and_images(
+    user_message: str,
+    history: List[dict],
+    images: List[Union[bytes, "io.BytesIO", "Image.Image"]],
+    provider: LLMProviderType = "openai",
+    system_prompt: Optional[str] = None,
+    k: int = 10,
+    topic: Optional[str] = None,
+    max_reasoning_loops: int = 1,
+    timeout: float = 120.0,
+) -> str:
+    """
+    Multimodal chat with conversation history + attached images.
+
+    - Images are sent to the LLM directly (vision-capable models/providers).
+    - History is provided as text context.
+    - user_message is included as text alongside images.
+    """
+    if not images:
+        return chat_with_history(
+            user_message=user_message,
+            history=history,
+            provider=provider,
+            system_prompt=system_prompt,
+            k=k,
+            topic=topic,
+            max_reasoning_loops=max_reasoning_loops,
+        )
+
+    # When max_reasoning_loops > 1, prepend reasoning instruction so the model thinks step-by-step
+    if max_reasoning_loops > 1:
+        reasoning_instruction = (
+            f"Reason step by step (up to {max_reasoning_loops} steps) before giving your final answer. "
+            "You may put your reasoning in <reasoning>...</reasoning> and your final answer in <answer>...</answer>, "
+            "or simply write your reasoning followed by your answer. "
+        )
+        system_prompt = (reasoning_instruction + "\n\n" + (system_prompt or "")).strip() or reasoning_instruction
+
+    # Sort history by created_at and limit to k most recent messages
+    sorted_history = sorted(
+        history,
+        key=lambda x: x.get("created_at") or "",
+        reverse=False,
+    )[-k:]
+
+    history_lines: List[str] = []
+    for msg in sorted_history:
+        role = (msg.get("sender_role", "") or "").upper()
+        content = (msg.get("message_content") or "").strip()
+        if not content:
+            continue
+        history_lines.append(f"{role}: {content}")
+
+    content_parts: List[dict] = []
+    if system_prompt:
+        content_parts.append({"type": "text", "text": system_prompt})
+    if topic and len(sorted_history) < 10:
+        content_parts.append({"type": "text", "text": f"Conversation topic: {topic}"})
+    if history_lines:
+        content_parts.append({"type": "text", "text": "Conversation history:\n" + "\n".join(history_lines)})
+
+    # Add the user message and the images
+    content_parts.append({"type": "text", "text": user_message})
+
+    for img in images:
+        try:
+            if hasattr(img, "save"):
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                mime = "image/png"
+            elif isinstance(img, bytes):
+                b64 = base64.b64encode(img).decode("utf-8")
+                mime = "image/png"
+            elif isinstance(img, io.BytesIO):
+                b64 = base64.b64encode(img.getvalue()).decode("utf-8")
+                mime = "image/png"
+            else:
+                continue
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                }
+            )
+        except Exception:
+            continue
+
+    llm = _get_llm(provider, timeout=timeout)
+    message = HumanMessage(content=content_parts)
+    response = llm.invoke([message])
+    return (response.content or "").strip()
+
+
 def simple_chat(
     message: str,
     provider: LLMProviderType = "openai",

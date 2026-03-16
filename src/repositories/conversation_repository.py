@@ -67,3 +67,49 @@ class ConversationRepository(BaseRepository[Conversations]):
     def find_by_creator(self, user_id: UUID) -> List[Conversations]:
         """Find all conversations created by a specific user"""
         return self.find_by(created_by=user_id)
+
+    def search_conversations_by_topic_exact(self, user_id: UUID, topic: str) -> List[Conversations]:
+        """Exact (case-insensitive) search of conversations by topic for a specific user."""
+        return self.db.query(Conversations).filter(
+            Conversations.created_by == user_id,
+            Conversations.conversation_topic.ilike(f"{topic}")
+        ).all()
+
+    def search_conversations_by_topic_contains(self, user_id: UUID, topic: str) -> List[Conversations]:
+        """Substring (case-insensitive) search of conversations by topic for a specific user."""
+        return self.db.query(Conversations).filter(
+            Conversations.created_by == user_id,
+            Conversations.conversation_topic.ilike(f"%{topic}%")
+        ).all()
+
+    def search_conversations_by_message_exact(self, user_id: UUID, query: str) -> List[Conversations]:
+        """
+        Exact (case-insensitive) search of conversations by message content for a specific user.
+        Returns distinct conversations that have at least one matching message.
+        """
+        q = (
+            self.db.query(Conversations)
+            .join(Messages, Conversations.conversation_id == Messages.conversation_id)
+            .filter(
+                Conversations.created_by == user_id,
+                Messages.message_content.ilike(f"{query}")
+            )
+            .distinct()
+        )
+        return q.all()
+
+    def search_conversations_by_message_contains(self, user_id: UUID, query: str) -> List[Conversations]:
+        """
+        Substring (case-insensitive) search of conversations by message content for a specific user.
+        Returns distinct conversations that have at least one matching message.
+        """
+        q = (
+            self.db.query(Conversations)
+            .join(Messages, Conversations.conversation_id == Messages.conversation_id)
+            .filter(
+                Conversations.created_by == user_id,
+                Messages.message_content.ilike(f"%{query}%")
+            )
+            .distinct()
+        )
+        return q.all()

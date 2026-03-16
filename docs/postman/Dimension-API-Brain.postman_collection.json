@@ -21,7 +21,8 @@
     { "key": "entity_id", "value": "" },
     { "key": "node_a", "value": "" },
     { "key": "node_b", "value": "" },
-    { "key": "agent_name_search", "value": "Assistant" }
+    { "key": "agent_name_search", "value": "Assistant" },
+    { "key": "search_query", "value": "Assistant" }
   ],
   "item": [
     {
@@ -33,14 +34,15 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/agents",
-            "description": "Optional query: limit"
+            "description": "Optional query: limit.\n\nResponse: each agent has field `default` = true when created_by is public UUID (00000000-0000-0000-0000-000000000000), otherwise false."
           }
         },
         {
           "name": "Get agent by ID",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/agents/{{agent_id}}"
+            "url": "{{base_url}}/agents/{{agent_id}}",
+            "description": "Response includes `default` flag computed from created_by (public UUID ⇒ default=true)."
           }
         },
         {
@@ -171,7 +173,7 @@
               "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
             },
             "url": "{{base_url}}/conversations/chat",
-            "description": "use_rag: search node_vector; attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden."
+            "description": "use_rag: search node_vector; attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden.\n\nResponse fields:\n- citations: RAG sources (nodes/files/conversations).\n- attachments: full details of attached nodes/files/conversations (ids, names, topics) echoed back for UI."
           }
         },
         {
@@ -476,6 +478,29 @@
             },
             "url": "{{base_url}}/examplegen",
             "description": "AI generates sample data and optional INSERT. execute_insert=true runs INSERT only (no DELETE/DROP)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Global exact search (agents + conversations)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q={{search_query}}&limit_agents=10&limit_conversations=10",
+              "host": ["{{base_url}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "{{search_query}}", "description": "Exact (case-insensitive) search text" },
+                { "key": "limit_agents", "value": "10", "description": "Max number of agents to return" },
+                { "key": "limit_conversations", "value": "10", "description": "Max number of conversations to return" }
+              ]
+            },
+            "description": "Non-semantic substring (case-insensitive) search across:\n- Agents (accessible to current user: own + public) by agent_name.\n- Conversations (owned by current user) by topic and message content.\n\nIf q is empty/blank: returns recent conversations + accessible agents (limited), so UI can show default/public agents.\n\nResponse shape:\n{\n  \"query\": \"...\",\n  \"agents\": [\n    { \"agent_id\", \"agent_name\", \"agent_desc\", \"default\" }\n  ],\n  \"conversations\": [\n    { \"conversation_id\", \"conversation_topic\", \"updated_at\", \"last_message_preview\" }\n  ]\n}"
           }
         }
       ]

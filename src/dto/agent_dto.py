@@ -64,6 +64,7 @@ class AgentResponse(BaseResponseModel):
     created_by: Optional[UUID]
     updated_at: Optional[datetime]
     updated_by: Optional[UUID]
+    default: Optional[bool]
 
     class Config:
         from_attributes = True
@@ -78,7 +79,8 @@ class AgentResponse(BaseResponseModel):
                 "created_at": "2026-01-31T12:00:00Z",
                 "created_by": "123e4567-e89b-12d3-a456-426614174001",
                 "updated_at": "2026-01-31T12:00:00Z",
-                "updated_by": "123e4567-e89b-12d3-a456-426614174001"
+                "updated_by": "123e4567-e89b-12d3-a456-426614174001",
+                "default": False
             }
         }
 
@@ -97,7 +99,8 @@ class AgentListResponse(BaseModel):
                         "agent_id": "123e4567-e89b-12d3-a456-426614174000",
                         "agent_name": "Research Assistant",
                         "agent_desc": "AI assistant for research",
-                        "created_at": "2026-01-31T12:00:00Z"
+                        "created_at": "2026-01-31T12:00:00Z",
+                        "default": False
                     }
                 ]
             }

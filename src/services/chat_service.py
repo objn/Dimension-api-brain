@@ -206,6 +206,7 @@ class ChatService:
         rag_context_parts: List[str] = []
         citations: List[Dict[str, Any]] = []
         index = 1
+        attached_images: List[bytes] = []
 
         # Attached files: parse, inject, and add citation for each
         for file_id in attach_files:
@@ -213,6 +214,27 @@ class ChatService:
             if not file_entity or file_entity.created_by != user_id:
                 continue
             try:
+                # If the attached file is an image, send it to the vision model directly
+                mime = (file_entity.mime_type or "").lower()
+                if mime.startswith("image/") and file_entity.file_path:
+                    with open(file_entity.file_path, "rb") as f:
+                        img_bytes = f.read()
+                    if img_bytes:
+                        attached_images.append(img_bytes)
+                        citations.append({
+                            "index": index,
+                            "source_type": "file",
+                            "file": {
+                                "file_id": str(file_entity.file_id),
+                                "file_name": file_entity.file_name or "image",
+                                "file_size": file_entity.file_size,
+                                "mime_type": file_entity.mime_type or "",
+                            },
+                            "snippet": f"[Image attached: {file_entity.file_name or 'image'}]",
+                        })
+                        index += 1
+                    continue
+
                 text = parse_document(
                     file_entity.file_path,
                     mime_type=file_entity.mime_type,
@@ -340,16 +362,28 @@ class ChatService:
         if rag_context:
             system_prompt += "\n\nUse the following retrieved or attached knowledge when relevant. Cite sources by number as [1], [2], [3], etc.\n\n" + rag_context
         
-        # 4. Generate AGENT response
-        agent_response_content = LLM.chat_with_history(
-            user_message=user_message,
-            topic=conversation.conversation_topic,
-            history=context,
-            provider=effective_provider,
-            system_prompt=system_prompt,
-            k=MAX_HISTORY,
-            max_reasoning_loops=max_reasoning_loops,
-        )
+        # 4. Generate AGENT response (multimodal when images are attached)
+        if attached_images:
+            agent_response_content = LLM.chat_with_history_and_images(
+                user_message=user_message,
+                topic=conversation.conversation_topic,
+                history=context,
+                images=attached_images,
+                provider=effective_provider,
+                system_prompt=system_prompt,
+                k=MAX_HISTORY,
+                max_reasoning_loops=max_reasoning_loops,
+            )
+        else:
+            agent_response_content = LLM.chat_with_history(
+                user_message=user_message,
+                topic=conversation.conversation_topic,
+                history=context,
+                provider=effective_provider,
+                system_prompt=system_prompt,
+                k=MAX_HISTORY,
+                max_reasoning_loops=max_reasoning_loops,
+            )
         
         # 5. Store AGENT response (immutable)
         agent_msg = self.create_message(
@@ -364,7 +398,58 @@ class ChatService:
             "updated_at": datetime.utcnow(),
             "updated_by": user_id
         })
-        
+
+        # Build attachment details for response
+        node_attachments: List[Dict[str, Any]] = []
+        file_attachments: List[Dict[str, Any]] = []
+        conversation_attachments: List[Dict[str, Any]] = []
+
+        if attach_nodes:
+            for nid in attach_nodes:
+                node = self.node_repo.find_one_by_id(nid)
+                if not node:
+                    continue
+                node_attachments.append(
+                    {
+                        "node_id": str(node.node_id),
+                        "node_name": node.node_name or str(node.node_id),
+                        "node_desc": node.node_desc or "",
+                    }
+                )
+
+        if attach_files:
+            for file_id in attach_files:
+                file_entity = self.file_repo.find_one_by_id(file_id)
+                if not file_entity:
+                    continue
+                file_attachments.append(
+                    {
+                        "file_id": str(file_entity.file_id),
+                        "file_name": file_entity.file_name or "file",
+                        "file_size": file_entity.file_size,
+                        "mime_type": file_entity.mime_type or "",
+                    }
+                )
+
+        if attach_conversations:
+            for cid in attach_conversations:
+                try:
+                    convo = self._check_conversation_ownership(cid, user_id)
+                except (PermissionError, ValueError):
+                    continue
+                conversation_attachments.append(
+                    {
+                        "conversation_id": str(convo.conversation_id),
+                        "conversation_topic": convo.conversation_topic or "",
+                    }
+                )
+
+        attachments: Dict[str, Any] = {
+            "nodes": node_attachments,
+            "files": file_attachments,
+            "conversations": conversation_attachments,
+        }
+
         return ChatResponse(
             conversation_id=conversation_id,
             user_message=MessageResponse.model_validate(user_msg),
@@ -373,6 +458,7 @@ class ChatService:
             agent_name=agent.agent_name,
             messages_in_context=len(context),
             citations=citations,
+            attachments=attachments,
         )
     
     def record_tool_output(
