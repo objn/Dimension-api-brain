@@ -480,8 +480,6 @@ class ChatService:
             agent_id=agent_id,
             agent_name=agent.agent_name,
             messages_in_context=len(context),
-            citations=citations,
-            attachments=attachments,
         )
     
     def record_tool_output(

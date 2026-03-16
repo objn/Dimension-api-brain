@@ -352,7 +352,8 @@ class SystemMessageRequest(BaseModel):
 class ChatResponse(BaseModel):
     """
     Response model for chat interactions.
-    Contains the agent's response and metadata.
+    Attachments live in user_message.metadatas.attachments,
+    citations live in agent_response.metadatas.citations.
     """
     conversation_id: UUID
     user_message: MessageResponse
@@ -360,17 +361,6 @@ class ChatResponse(BaseModel):
     agent_id: UUID
     agent_name: Optional[str]
     messages_in_context: int = Field(description="Number of messages used as context")
-    citations: Optional[List[dict]] = Field(
-        default_factory=list,
-        description="When use_rag was true: sources (node_id, chunk_id, snippet) used for the response"
-    )
-    attachments: Optional[dict] = Field(
-        default_factory=dict,
-        description=(
-            "Details about any attached entities used for context. "
-            "Structure: {'nodes': [...], 'files': [...], 'conversations': [...]}"
-        ),
-    )
 
     class Config:
         json_schema_extra = {
@@ -379,40 +369,26 @@ class ChatResponse(BaseModel):
                 "user_message": {
                     "message_id": "123e4567-e89b-12d3-a456-426614174002",
                     "message_content": "What is machine learning?",
-                    "sender_role": "USER"
+                    "sender_role": "USER",
+                    "metadatas": {
+                        "attachments": {
+                            "nodes": [],
+                            "files": [{"file_id": "...", "file_name": "ml_notes.pdf", "mime_type": "application/pdf", "file_size": 102400}],
+                            "conversations": []
+                        }
+                    }
                 },
                 "agent_response": {
                     "message_id": "123e4567-e89b-12d3-a456-426614174003",
                     "message_content": "Machine learning is a subset of AI...",
-                    "sender_role": "AGENT"
+                    "sender_role": "AGENT",
+                    "metadatas": {
+                        "citations": [{"index": 1, "source_type": "file", "snippet": "..."}]
+                    }
                 },
                 "agent_id": "123e4567-e89b-12d3-a456-426614174999",
                 "agent_name": "Research Assistant",
-                "messages_in_context": 5,
-                "citations": [],
-                "attachments": {
-                    "nodes": [
-                        {
-                            "node_id": "123e4567-e89b-12d3-a456-426614174100",
-                            "node_name": "ML Overview",
-                            "node_desc": "High-level machine learning notes"
-                        }
-                    ],
-                    "files": [
-                        {
-                            "file_id": "123e4567-e89b-12d3-a456-426614174200",
-                            "file_name": "ml_notes.pdf",
-                            "mime_type": "application/pdf",
-                            "file_size": 102400
-                        }
-                    ],
-                    "conversations": [
-                        {
-                            "conversation_id": "123e4567-e89b-12d3-a456-426614174300",
-                            "conversation_topic": "Previous ML discussion"
-                        }
-                    ]
-                }
+                "messages_in_context": 5
             }
         }
 
