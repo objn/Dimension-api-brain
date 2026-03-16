@@ -235,7 +235,7 @@ class ConversationWithMessagesResponse(BaseResponseModel):
 # ============================================================================
 
 class AttachRequest(BaseModel):
-    """Node and file IDs to attach for retrieval/context in chat."""
+    """Node, file, and conversation IDs to attach for retrieval/context in chat."""
     nodes: List[UUID] = Field(
         default_factory=list,
         description="Node IDs to attach for context"
@@ -243,6 +243,10 @@ class AttachRequest(BaseModel):
     files: List[UUID] = Field(
         default_factory=list,
         description="File IDs to attach (content parsed and injected)"
+    )
+    conversations: List[UUID] = Field(
+        default_factory=list,
+        description="Conversation IDs whose messages will be injected as additional context"
     )
 
 
@@ -292,7 +296,11 @@ class ChatRequest(BaseModel):
                 "llm_provider": "openai",
                 "use_rag": False,
                 "workspace_id": None,
-                "attach": {"nodes": [], "files": []},
+                "attach": {
+                    "nodes": [],
+                    "files": [],
+                    "conversations": []
+                },
                 "max_reasoning_loops": 1,
                 "rag_top_k": 5
             }

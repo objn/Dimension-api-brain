@@ -164,6 +164,7 @@ class ChatService:
         attach = attach or {}
         attach_nodes: List[UUID] = list(attach.get("nodes") or [])
         attach_files: List[UUID] = list(attach.get("files") or [])
+        attach_conversations: List[UUID] = list(attach.get("conversations") or [])
         k_chunks = rag_top_k if rag_top_k is not None else RAG_TOP_K_DEFAULT
 
         # Validate conversation exists and check ownership
@@ -249,6 +250,50 @@ class ChatService:
                     "node_id": str(node.node_id),
                     "node_name": node.node_name or str(nid),
                     "node_desc": node.node_desc or "",
+                },
+                "snippet": snippet,
+            })
+            index += 1
+
+        # Attached conversations: inject messages and add citation for each
+        for cid in attach_conversations:
+            try:
+                convo = self._check_conversation_ownership(cid, user_id)
+            except (PermissionError, ValueError):
+                continue
+
+            history = self.get_conversation_context(
+                conversation_id=cid,
+                max_messages=MAX_HISTORY,
+                user_id=user_id,
+            )
+            if not history:
+                continue
+
+            lines: List[str] = []
+            for msg in history:
+                role = msg.get("sender_role", "USER")
+                content = msg.get("message_content") or ""
+                if not content:
+                    continue
+                lines.append(f"{role}: {content}")
+
+            if not lines:
+                continue
+
+            convo_text = "\n".join(lines)
+            snippet = convo_text[:300] + "…" if len(convo_text) > 300 else convo_text
+            title = convo.conversation_topic or str(cid)
+
+            rag_context_parts.append(
+                f"[{index}] [Attached conversation: {title}]\n{convo_text}"
+            )
+            citations.append({
+                "index": index,
+                "source_type": "conversation",
+                "conversation": {
+                    "conversation_id": str(convo.conversation_id),
+                    "conversation_topic": convo.conversation_topic or "",
                 },
                 "snippet": snippet,
             })

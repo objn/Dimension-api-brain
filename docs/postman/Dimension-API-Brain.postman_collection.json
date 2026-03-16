@@ -168,10 +168,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": { \"nodes\": [], \"files\": [] },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
             },
             "url": "{{base_url}}/conversations/chat",
-            "description": "use_rag: search node_vector; attach: nodes/files for citations; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden."
+            "description": "use_rag: search node_vector; attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden."
           }
         },
         {

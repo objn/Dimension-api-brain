@@ -362,6 +362,7 @@ async def chat_with_agent(
     Implements AI Agent Operating Instructions for message handling.
     """
     try:
+        attach = request.attach or AttachRequest()
         chat_service = ChatService(db)
         
         response = chat_service.process_user_message(
@@ -372,7 +373,11 @@ async def chat_with_agent(
             llm_provider=request.llm_provider,
             use_rag=request.use_rag or False,
             workspace_id=request.workspace_id,
-            attach={"nodes": request.attach.nodes, "files": request.attach.files},
+            attach={
+                "nodes": attach.nodes,
+                "files": attach.files,
+                "conversations": attach.conversations,
+            },
             max_reasoning_loops=request.max_reasoning_loops or 1,
             rag_top_k=request.rag_top_k,
         )
