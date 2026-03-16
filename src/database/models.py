@@ -27,6 +27,7 @@ class Agents(Base):
     updated_at = Column(DateTime)
     updated_by = Column(UUID(as_uuid=True), ForeignKey('Users.user_id'))
     agent_profile_image = Column(UUID(as_uuid=True), ForeignKey('Files.file_id'))
+    agent_default = Column(Boolean, default=False, nullable=False)
 
     Files = relationship("Files", foreign_keys=[agent_profile_image])
     Users = relationship("Users", foreign_keys=[created_by])

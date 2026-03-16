@@ -40,6 +40,7 @@ class AgentUpdateRequest(BaseModel):
     agent_prompt: Optional[str] = Field(None, description="Agent system prompt")
     agent_profile_image: Optional[UUID] = Field(None, description="Profile image file ID")
     default_llm_provider: Optional[DefaultLLMProviderType] = Field(None, description="Default LLM provider for this agent")
+    agent_default: Optional[bool] = Field(None, description="If true, everyone can see and use this agent")
 
     class Config:
         json_schema_extra = {
@@ -47,7 +48,8 @@ class AgentUpdateRequest(BaseModel):
                 "agent_name": "Updated Research Assistant",
                 "agent_desc": "Updated description",
                 "agent_prompt": "Updated system prompt",
-                "default_llm_provider": "gemini"
+                "default_llm_provider": "gemini",
+                "agent_default": False
             }
         }
 
@@ -64,10 +66,15 @@ class AgentResponse(BaseResponseModel):
     created_by: Optional[UUID]
     updated_at: Optional[datetime]
     updated_by: Optional[UUID]
-    default: Optional[bool]
+    agent_default: bool = Field(
+        default=False,
+        serialization_alias="default",
+        description="True when agent is default (everyone can see and use)",
+    )
 
     class Config:
         from_attributes = True
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "agent_id": "123e4567-e89b-12d3-a456-426614174000",

@@ -5,9 +5,8 @@ from uuid import UUID
 
 from src.database import get_db
 from src.database.models import Messages
-from src.repositories.agent_repository import AgentRepository, PUBLIC_AGENT_UUID
+from src.repositories.agent_repository import AgentRepository
 from src.repositories.conversation_repository import ConversationRepository, MessageRepository
-from src.dto.agent_dto import AgentResponse
 from src.dto.conversation_dto import (
     GlobalSearchResponse,
     AgentSearchItem,
@@ -56,10 +55,10 @@ async def global_search(
         # If blank query, return recent items to populate the search UI
         if not query:
             agents = agent_repo.find_accessible_by_user(current_user_id)
-            # prefer default/public agents first, then by created_at desc
+            # prefer agent_default=True first, then by created_at desc
             agents.sort(
                 key=lambda a: (
-                    0 if a.created_by == PUBLIC_AGENT_UUID else 1,
+                    0 if getattr(a, "agent_default", False) else 1,
                     -(a.created_at.timestamp() if a.created_at else 0),
                 )
             )
@@ -101,7 +100,7 @@ async def global_search(
                 agent_id=agent.agent_id,
                 agent_name=agent.agent_name,
                 agent_desc=agent.agent_desc,
-                default=agent.created_by == PUBLIC_AGENT_UUID,
+                default=getattr(agent, "agent_default", False),
             )
             for agent in agents
         ]
