@@ -35,6 +35,7 @@ from src.dto.conversation_dto import (
     MessageListResponse,
     ConversationWithMessagesResponse,
     # Chat DTOs
+    AttachRequest,
     ChatRequest,
     ChatResponse,
     ChatPanelRequest,

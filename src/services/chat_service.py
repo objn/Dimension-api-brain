@@ -7,10 +7,13 @@ This service handles the multi-role conversation flow:
 - Agent persona management via agent_prompt
 - Context management with recent message filtering
 """
+import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from src.database.models import Messages, Conversations, Agents, Nodes, Files
 from src.repositories.conversation_repository import ConversationRepository, MessageRepository
@@ -202,37 +205,45 @@ class ChatService:
             if not scope_node_ids:
                 scope_node_ids = None  # search unscoped if workspace has no nodes
         
-        # RAG: retrieve chunks and build context + citations
-        rag_context_parts: List[str] = []
+        # Collect attachments per type for structured reference context
         citations: List[Dict[str, Any]] = []
         index = 1
         attached_images: List[bytes] = []
+        image_names: List[str] = []
+        node_parts: List[str] = []
+        file_parts: List[str] = []
+        convo_parts: List[str] = []
+        rag_parts: List[str] = []
 
-        # Attached files: parse, inject, and add citation for each
+        # ── Attached files ──────────────────────────────────────────────
         for file_id in attach_files:
             file_entity = self.file_repo.find_one_by_id(file_id)
-            if not file_entity or file_entity.created_by != user_id:
+            if not file_entity:
+                logger.warning("Attach file %s: not found in database, skipping", file_id)
                 continue
             try:
-                # If the attached file is an image, send it to the vision model directly
                 mime = (file_entity.mime_type or "").lower()
+                fname = file_entity.file_name or "file"
+
                 if mime.startswith("image/") and file_entity.file_path:
                     with open(file_entity.file_path, "rb") as f:
                         img_bytes = f.read()
                     if img_bytes:
                         attached_images.append(img_bytes)
+                        image_names.append(fname)
                         citations.append({
                             "index": index,
                             "source_type": "file",
                             "file": {
                                 "file_id": str(file_entity.file_id),
-                                "file_name": file_entity.file_name or "image",
+                                "file_name": fname,
                                 "file_size": file_entity.file_size,
                                 "mime_type": file_entity.mime_type or "",
                             },
-                            "snippet": f"[Image attached: {file_entity.file_name or 'image'}]",
+                            "snippet": f"[Image: {fname}]",
                         })
                         index += 1
+                        logger.info("Attach file %s: image loaded (%d bytes)", file_id, len(img_bytes))
                     continue
 
                 text = parse_document(
@@ -242,46 +253,56 @@ class ChatService:
                 )
                 if text and text.strip():
                     snippet = text.strip()[:300] + "…" if len(text.strip()) > 300 else text.strip()
-                    rag_context_parts.append(f"[{index}] [Attached file: {file_entity.file_name or 'file'}]\n{text.strip()}")
+                    file_parts.append(f"[{index}] File: \"{fname}\" (type: {file_entity.mime_type or 'unknown'})\n{text.strip()}")
                     citations.append({
                         "index": index,
                         "source_type": "file",
                         "file": {
                             "file_id": str(file_entity.file_id),
-                            "file_name": file_entity.file_name or "file",
+                            "file_name": fname,
                             "file_size": file_entity.file_size,
                             "mime_type": file_entity.mime_type or "",
                         },
                         "snippet": snippet,
                     })
                     index += 1
-            except Exception:
-                pass
+                    logger.info("Attach file %s: text extracted (%d chars)", file_id, len(text.strip()))
+                else:
+                    logger.warning("Attach file %s: parse_document returned empty text", file_id)
+            except Exception as e:
+                logger.error("Attach file %s: failed to process – %s", file_id, e, exc_info=True)
 
-        # Attached nodes: inject full content and add citation for each
+        # ── Attached nodes ──────────────────────────────────────────────
         for nid in attach_nodes:
             node = self.node_repo.find_one_by_id(nid)
-            if not node or not node.node_content_md:
+            if not node:
+                logger.warning("Attach node %s: not found in database, skipping", nid)
                 continue
-            snippet = (node.node_content_md.strip()[:300] + "…") if len((node.node_content_md or "").strip()) > 300 else (node.node_content_md or "").strip()
-            rag_context_parts.append(f"[{index}] [Attached node: {node.node_name or str(nid)}]\n{node.node_content_md.strip()}")
+            if not node.node_content_md:
+                logger.warning("Attach node %s (%s): node_content_md is empty, skipping", nid, node.node_name)
+                continue
+            nname = node.node_name or str(nid)
+            ndesc = f" – {node.node_desc}" if node.node_desc else ""
+            snippet = (node.node_content_md.strip()[:300] + "…") if len(node.node_content_md.strip()) > 300 else node.node_content_md.strip()
+            node_parts.append(f"[{index}] Node: \"{nname}\"{ndesc}\n{node.node_content_md.strip()}")
             citations.append({
                 "index": index,
                 "source_type": "node",
                 "node": {
                     "node_id": str(node.node_id),
-                    "node_name": node.node_name or str(nid),
+                    "node_name": nname,
                     "node_desc": node.node_desc or "",
                 },
                 "snippet": snippet,
             })
             index += 1
 
-        # Attached conversations: inject messages and add citation for each
+        # ── Attached conversations ──────────────────────────────────────
         for cid in attach_conversations:
             try:
                 convo = self._check_conversation_ownership(cid, user_id)
             except (PermissionError, ValueError):
+                logger.warning("Attach conversation %s: permission denied or not found, skipping", cid)
                 continue
 
             history = self.get_conversation_context(
@@ -307,9 +328,7 @@ class ChatService:
             snippet = convo_text[:300] + "…" if len(convo_text) > 300 else convo_text
             title = convo.conversation_topic or str(cid)
 
-            rag_context_parts.append(
-                f"[{index}] [Attached conversation: {title}]\n{convo_text}"
-            )
+            convo_parts.append(f"[{index}] Conversation: \"{title}\"\n{convo_text}")
             citations.append({
                 "index": index,
                 "source_type": "conversation",
@@ -321,7 +340,7 @@ class ChatService:
             })
             index += 1
 
-        # use_rag: search node_vector by similarity, select top-k chunks
+        # ── RAG search (similarity) ────────────────────────────────────
         if use_rag:
             search_results = semantic_search_service.search(
                 db=self.db,
@@ -331,21 +350,21 @@ class ChatService:
                 min_similarity=RAG_MIN_SIMILARITY_CHAT,
             )
             if search_results:
-                # Load all cited nodes in one query for joined data
                 rag_node_ids = list({r.node_id for r in search_results})
                 nodes_by_id: Dict[UUID, Nodes] = {}
                 if rag_node_ids:
                     for n in self.node_repo.find_by_ids(rag_node_ids):
                         nodes_by_id[n.node_id] = n
                 for r in search_results:
-                    rag_context_parts.append(f"[{index}] {r.node_content_md_chunk}")
                     node_entity = nodes_by_id.get(r.node_id)
+                    rname = (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id)
+                    rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
                     citations.append({
                         "index": index,
                         "source_type": "node",
                         "node": {
                             "node_id": str(r.node_id),
-                            "node_name": (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id),
+                            "node_name": rname,
                             "node_desc": (node_entity.node_desc or "") if node_entity else "",
                         },
                         "chunk_id": str(r.chunk_id),
@@ -354,13 +373,35 @@ class ChatService:
                         "similarity": r.similarity,
                     })
                     index += 1
-        
-        rag_context = "\n\n".join(rag_context_parts) if rag_context_parts else ""
 
-        # 3. Build system prompt with optional RAG/attach context
+        # ── Build structured reference context ──────────────────────────
         system_prompt = agent.agent_prompt or ""
-        if rag_context:
-            system_prompt += "\n\nUse the following retrieved or attached knowledge when relevant. Cite sources by number as [1], [2], [3], etc.\n\n" + rag_context
+
+        ref_sections: List[str] = []
+        if image_names:
+            names = ", ".join(f'"{n}"' for n in image_names)
+            ref_sections.append(f"📷 ATTACHED IMAGES (sent as visual input): {names}\nAnalyze the images provided and use them to answer the user's question.")
+        if file_parts:
+            ref_sections.append("📄 ATTACHED FILES (text content extracted):\n" + "\n\n".join(file_parts))
+        if node_parts:
+            ref_sections.append("📝 ATTACHED NOTES/NODES (knowledge base entries):\n" + "\n\n".join(node_parts))
+        if convo_parts:
+            ref_sections.append("💬 ATTACHED CONVERSATIONS (previous chat history):\n" + "\n\n".join(convo_parts))
+        if rag_parts:
+            ref_sections.append("🔍 RELATED KNOWLEDGE (retrieved by similarity search):\n" + "\n\n".join(rag_parts))
+
+        reference_context: Optional[str] = None
+        if ref_sections:
+            reference_context = (
+                "IMPORTANT – The user has attached the following context to this message. "
+                "You MUST read and use ALL of this information to answer their question. "
+                "Cite sources by number [1], [2], etc.\n\n"
+                + "\n\n---\n\n".join(ref_sections)
+            )
+            logger.info(
+                "Reference context built: images=%d, files=%d, nodes=%d, conversations=%d, rag=%d",
+                len(image_names), len(file_parts), len(node_parts), len(convo_parts), len(rag_parts),
+            )
         
         # 4. Generate AGENT response (multimodal when images are attached)
         if attached_images:
@@ -373,6 +414,7 @@ class ChatService:
                 system_prompt=system_prompt,
                 k=MAX_HISTORY,
                 max_reasoning_loops=max_reasoning_loops,
+                reference_context=reference_context,
             )
         else:
             agent_response_content = LLM.chat_with_history(
@@ -383,6 +425,7 @@ class ChatService:
                 system_prompt=system_prompt,
                 k=MAX_HISTORY,
                 max_reasoning_loops=max_reasoning_loops,
+                reference_context=reference_context,
             )
         
         # 5. Store AGENT response (immutable)

@@ -145,6 +145,7 @@ def chat_with_history(
     k: int = 10,
     topic: Optional[str] = None,
     max_reasoning_loops: int = 1,
+    reference_context: Optional[str] = None,
 ) -> str:
     """
     Chat with conversation history.
@@ -157,11 +158,11 @@ def chat_with_history(
         k: Maximum number of recent messages to include from history
         topic: Optional conversation topic to include when history has < 10 messages
         max_reasoning_loops: 1 = single response; 2+ = instruct model to reason step-by-step (up to N steps) before answering
+        reference_context: Optional RAG/attach context injected right before the user message for high visibility
 
     Returns:
         The assistant's response content
     """
-    # When max_reasoning_loops > 1, prepend reasoning instruction so the model thinks step-by-step
     if max_reasoning_loops > 1:
         reasoning_instruction = (
             f"Reason step by step (up to {max_reasoning_loops} steps) before giving your final answer. "
@@ -173,27 +174,18 @@ def chat_with_history(
     llm = _get_llm(provider)
     messages = []
 
-    # Add system prompt if provided
     if system_prompt:
         messages.append(SystemMessage(content=system_prompt))
     
-    # Add topic context when history has fewer than 10 messages
     if topic and len(history) < 10:
         messages.append(SystemMessage(content=f"Conversation topic: {topic}"))
     
-    # Sort history by created_at and limit to k most recent messages
     sorted_history = sorted(
         history,
         key=lambda x: x.get('created_at') or '',
         reverse=False
     )[-k:]
     
-    # Convert history to LangChain messages
-    # Role mapping per AI Agent Operating Instructions:
-    # - USER -> HumanMessage
-    # - AGENT/ASSISTANT -> AIMessage  
-    # - SYSTEM -> SystemMessage
-    # - TOOL -> SystemMessage (tool outputs as context)
     for msg in sorted_history:
         role = msg.get('sender_role', '').upper()
         content = msg.get('message_content', '')
@@ -205,13 +197,14 @@ def chat_with_history(
         elif role == 'SYSTEM':
             messages.append(SystemMessage(content=content))
         elif role == 'TOOL':
-            # Tool outputs are added as system context
             messages.append(SystemMessage(content=f"[Tool Output]\n{content}"))
     
-    # Add current user message
+    # Inject reference/attach context right before user message so the LLM sees it prominently
+    if reference_context:
+        messages.append(SystemMessage(content=reference_context))
+
     messages.append(HumanMessage(content=user_message))
 
-    # Invoke LLM and return response
     response = llm.invoke(messages)
     return response.content.strip()
 
@@ -226,6 +219,7 @@ def chat_with_history_and_images(
     topic: Optional[str] = None,
     max_reasoning_loops: int = 1,
     timeout: float = 120.0,
+    reference_context: Optional[str] = None,
 ) -> str:
     """
     Multimodal chat with conversation history + attached images.
@@ -233,6 +227,7 @@ def chat_with_history_and_images(
     - Images are sent to the LLM directly (vision-capable models/providers).
     - History is provided as text context.
     - user_message is included as text alongside images.
+    - reference_context: RAG/attach context injected right before user message for high visibility.
     """
     if not images:
         return chat_with_history(
@@ -243,9 +238,9 @@ def chat_with_history_and_images(
             k=k,
             topic=topic,
             max_reasoning_loops=max_reasoning_loops,
+            reference_context=reference_context,
         )
 
-    # When max_reasoning_loops > 1, prepend reasoning instruction so the model thinks step-by-step
     if max_reasoning_loops > 1:
         reasoning_instruction = (
             f"Reason step by step (up to {max_reasoning_loops} steps) before giving your final answer. "
@@ -254,7 +249,6 @@ def chat_with_history_and_images(
         )
         system_prompt = (reasoning_instruction + "\n\n" + (system_prompt or "")).strip() or reasoning_instruction
 
-    # Sort history by created_at and limit to k most recent messages
     sorted_history = sorted(
         history,
         key=lambda x: x.get("created_at") or "",
@@ -277,7 +271,10 @@ def chat_with_history_and_images(
     if history_lines:
         content_parts.append({"type": "text", "text": "Conversation history:\n" + "\n".join(history_lines)})
 
-    # Add the user message and the images
+    # Inject reference/attach context right before user message for visibility
+    if reference_context:
+        content_parts.append({"type": "text", "text": reference_context})
+
     content_parts.append({"type": "text", "text": user_message})
 
     for img in images:
