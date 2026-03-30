@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import UUID, uuid4
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.database import get_db
 from src.repositories.job_repository import JobRepository
@@ -269,72 +269,89 @@ async def get_job_by_id(
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Register a new job with metadata",
-    description="Create a new job and its associated metadata"
+    description=(
+        "Register a background job via JobService.register_job (same path as document processing "
+        "and node embedding). The daemon activates it when job_start_time is reached. "
+        "job_type: process_document (metadata_json.file_id required) or "
+        "node_content_embedding (metadata_json.node_id required)."
+    ),
 )
 async def create_job(
     request: JobCreateRequest,
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id)
 ):
-    """Create a new job with optional metadata"""
+    """Create a job picked up by the job daemon; metadata shape matches register_job."""
     try:
-        now = datetime.utcnow()
-        job_id = uuid4()
         job_type_value = request.job_type.value if hasattr(request.job_type, 'value') else request.job_type
-        job_start_time = request.job_start_time or (now + timedelta(minutes=1))
 
-        # Create job with type and timing
-        new_job = Job(
-            job_id=job_id,
+        from src.services.task_registry import task_registry
+        if not task_registry.has(job_type_value):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No task handler registered for job_type: {job_type_value}",
+            )
+
+        meta = dict(request.metadata_json or {})
+        meta["job_type"] = job_type_value
+
+        if job_type_value == "process_document" and not meta.get("file_id"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="metadata_json.file_id is required for process_document jobs",
+            )
+        if job_type_value == "node_content_embedding" and not meta.get("node_id"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="metadata_json.node_id is required for node_content_embedding jobs",
+            )
+
+        job_start_time = request.job_start_time if request.job_start_time is not None else datetime.utcnow()
+
+        job_id = await job_service.register_job(
+            user_id=user_id,
             job_type=job_type_value,
+            metadata=meta,
             job_start_time=job_start_time,
-            job_end_time=None,
-            job_actived=False,
-            job_result=request.job_result or "PENDING",
-            created_at=now,
-            created_by=user_id,
-            updated_at=now,
-            updated_by=user_id
+            db=db,
         )
+
+        if request.content_to_summarize:
+            meta_row = db.query(Metadatas).filter(Metadatas.metadata_of == job_id).first()
+            if meta_row:
+                meta_row.content_to_summarize = request.content_to_summarize
+                meta_row.updated_at = datetime.utcnow()
+                meta_row.updated_by = user_id
+                db.commit()
 
         repo = JobRepository(db)
-        created_job = repo.create(new_job)
+        loaded = repo.find_one_by_id_with_metadata(job_id)
+        if not loaded:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Job registered but could not be reloaded",
+            )
 
-        # Create metadata
-        metadata_response = None
-        metadata_json = request.metadata_json or {}
-        metadata_json["job_type"] = job_type_value
-        
-        metadata_id = uuid4()
-        new_metadata = Metadatas(
-            metadata_id=metadata_id,
-            metadata_of=job_id,
-            metadata_json=metadata_json,
-            content_to_summarize=request.content_to_summarize,
-            created_at=now,
-            created_by=user_id,
-            updated_at=now,
-            updated_by=user_id
-        )
-        db.add(new_metadata)
-        db.commit()
-        db.refresh(new_metadata)
-        metadata_response = MetadataResponse.model_validate(new_metadata)
+        job, metadata_obj = loaded
+        metadata_response = MetadataResponse.model_validate(metadata_obj) if metadata_obj else None
 
         response = JobWithMetadataResponse(
-            job_id=created_job.job_id,
-            job_type=created_job.job_type,
-            job_start_time=created_job.job_start_time,
-            job_end_time=created_job.job_end_time,
-            job_actived=created_job.job_actived,
-            job_result=created_job.job_result,
-            created_at=created_job.created_at,
-            created_by=created_job.created_by,
-            updated_at=created_job.updated_at,
-            updated_by=created_job.updated_by,
-            metadata=metadata_response
+            job_id=job.job_id,
+            job_type=job.job_type,
+            job_start_time=job.job_start_time,
+            job_end_time=job.job_end_time,
+            job_actived=job.job_actived,
+            job_result=job.job_result,
+            job_error_log=getattr(job, "job_error_log", None),
+            created_at=job.created_at,
+            created_by=job.created_by,
+            updated_at=job.updated_at,
+            updated_by=job.updated_by,
+            metadata=metadata_response,
         )
         return success_response(response.model_dump())
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(

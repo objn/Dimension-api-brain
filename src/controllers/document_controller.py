@@ -171,14 +171,5 @@ async def process_imported_document(
         job_start_time=datetime.utcnow(),
         db=db,
     )
-
-    response = DocumentProcessResponse(
-        file_id=file_id,
-        node_id=None,
-        node_name=None,
-        job_id=job_id,
-    )
-    return success_response({
-        **response.model_dump(),
-        "message": "Document processing job registered. Poll GET /jobs/{job_id} for status. On SUCCESS, metadata contains node_id, node_name, embedding_job_id.",
-    })
+    # Keep response minimal: client can poll GET /jobs/{job_id} for status + metadata.
+    return success_response({"job_id": job_id})

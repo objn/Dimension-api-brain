@@ -2,9 +2,9 @@
 DTOs for Job operations.
 Request and response models with validation.
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from typing import Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 from enum import Enum
 
@@ -13,8 +13,9 @@ from .metadata_dto import MetadataResponse
 
 
 class JobType(str, Enum):
-    """Allowed job types"""
-    EMBEDDING = "node_content_embedding"
+    """Allowed job types (must match TaskRegistry registration in main.py)."""
+    PROCESS_DOCUMENT = "process_document"
+    NODE_CONTENT_EMBEDDING = "node_content_embedding"
 
 
 class JobHandleAction(str, Enum):
@@ -42,19 +43,39 @@ class JobHandleRequest(BaseModel):
 class JobCreateRequest(BaseModel):
     """Request body for creating a job with metadata"""
     job_type: JobType = Field(..., description="Type of the job")
-    job_start_time: Optional[datetime] = Field(None, description="Scheduled start time. Defaults to now + 1 minute if not provided.")
-    job_result: Optional[str] = Field("PENDING", max_length=16, description="Job result status")
-    metadata_json: Optional[dict] = Field(None, description="JSON metadata for the job")
-    content_to_summarize: Optional[str] = Field(None, description="Content to be summarized")
+    job_start_time: Optional[datetime] = Field(
+        None,
+        description="When to allow the daemon to pick up this job. Defaults to now (immediate) if omitted.",
+    )
+    job_result: Optional[str] = Field(
+        "PENDING",
+        max_length=16,
+        description="Ignored on create: new jobs are always registered as PENDING.",
+    )
+    metadata_json: Optional[dict] = Field(
+        None,
+        description=(
+            "Task parameters in Metadatas.metadata_json. "
+            "For process_document include file_id (UUID string) and optional reformat_options, llm_provider, create_node, use_llm_extract, max_pages_per_call, translate_to. "
+            "For node_content_embedding include node_id and optional force_reembed."
+        ),
+    )
+    content_to_summarize: Optional[str] = Field(None, description="Optional Metadatas.content_to_summarize column")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "job_type": "node_content_embedding",
-                "job_start_time": "2026-02-11T12:01:00Z",
-                "job_result": "PENDING",
-                "metadata_json": {"task_type": "data_processing", "priority": "high"},
-                "content_to_summarize": "Job details to summarize..."
+                "job_type": "process_document",
+                "job_start_time": "2026-02-11T12:00:00Z",
+                "metadata_json": {
+                    "file_id": "660e8400-e29b-41d4-a716-446655440001",
+                    "reformat_options": [],
+                    "llm_provider": "openai",
+                    "create_node": True,
+                    "use_llm_extract": False,
+                    "max_pages_per_call": 5,
+                    "translate_to": None,
+                },
             }
         }
 
