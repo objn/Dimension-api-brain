@@ -188,13 +188,46 @@ def process_document(
     if file_entity.created_by != user_id:
         raise PermissionError("You don't have permission to process this file")
 
-    # Resolve path so it works whether DB has relative or absolute path (e.g. uploads/xxx.pdf vs C:\...\uploads\xxx.pdf)
+    # Resolve path so it works across different deploy layouts.
+    # Example DB value: "uploads/<user_id>/<filename>.pdf"
     raw_path = Path(file_entity.file_path or "")
-    if not raw_path.is_absolute():
-        raw_path = (Path(settings.upload_dir) / raw_path.name).resolve()
-    if not raw_path.exists():
-        raise ValueError(f"File not found on disk: {file_entity.file_path}")
-    resolved_file_path = str(raw_path)
+    candidates: list[Path] = []
+    if raw_path:
+        candidates.append(raw_path)
+        if not raw_path.is_absolute():
+            # 1) As-is relative to current working directory
+            candidates.append(Path.cwd() / raw_path)
+
+            # 2) Relative to UPLOAD_DIR (preserve subfolders)
+            upload_dir = Path(settings.upload_dir)
+            if raw_path.parts and raw_path.parts[0] == upload_dir.name:
+                # raw_path already starts with "uploads/..." (common DB format)
+                candidates.append(Path.cwd() / raw_path)
+                candidates.append(Path("app") / raw_path)  # fallback: "app/uploads/..."
+            else:
+                # raw_path is something like "<user_id>/<filename>" (not starting with uploads)
+                candidates.append(upload_dir / raw_path)
+                candidates.append(Path.cwd() / upload_dir / raw_path)
+                candidates.append(Path("app") / upload_dir / raw_path)
+
+            # 3) Explicit fallback requested by user: app/<raw_path>
+            candidates.append(Path("app") / raw_path)
+
+    resolved: Path | None = None
+    for p in candidates:
+        try:
+            if p.exists():
+                resolved = p.resolve()
+                break
+        except OSError:
+            continue
+
+    if not resolved:
+        raise ValueError(
+            f"File not found on disk: {file_entity.file_path}"
+        )
+
+    resolved_file_path = str(resolved)
 
     is_pdf = (file_entity.mime_type or "").lower().strip().split(";")[0] == "application/pdf" or (
         (file_entity.file_path or "").lower().endswith(".pdf")
