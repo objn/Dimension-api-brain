@@ -23,7 +23,9 @@ from datetime import datetime
 from src.database import get_db
 from src.repositories.conversation_repository import ConversationRepository
 from src.repositories.agent_repository import AgentRepository
-from src.database.models import Conversations, Messages
+from src.repositories.file_repository import FileRepository
+from src.config.settings import settings
+from src.database.models import Conversations, Messages, Agents, Files
 from src.dto.conversation_dto import (
     ConversationCreateRequest,
     ConversationUpdateRequest,
@@ -135,6 +137,79 @@ async def get_conversation_by_id(
             if role in role_counts:
                 role_counts[role] += 1
 
+        agent_repo = AgentRepository(db)
+        file_repo = FileRepository(db)
+        agents_cache: dict[UUID, Agents] = {}
+        files_cache: dict[UUID, Files] = {}
+
+        def build_upload_url(file_path: Optional[str]) -> Optional[str]:
+            """
+            Build a public URL from stored `Files.file_path`.
+            Expected format: join `settings.backend_server` + `file_path`,
+            while avoiding accidental double `/api`.
+            """
+            if not file_path:
+                return None
+
+            fp = str(file_path).replace("\\", "/")
+            if fp.startswith("http://") or fp.startswith("https://"):
+                return fp
+
+            # If DB stores an absolute local path (e.g. C:/.../uploads/<file>),
+            # extract the public part starting from "/uploads/".
+            uploads_idx = fp.lower().rfind("/uploads/")
+            if uploads_idx != -1:
+                fp = fp[uploads_idx:]
+
+            base = (settings.backend_server or "").rstrip("/")
+            if not base:
+                return fp
+
+            # Normalize double "/api/api/..."
+            if fp.startswith("/api/") and base.endswith("/api"):
+                fp = fp[len("/api"):]
+            elif fp.startswith("api/") and base.endswith("/api"):
+                fp = "/" + fp[len("api"):]
+
+            if fp.startswith("/"):
+                return base + fp
+            return base + "/" + fp
+
+        message_responses: list[MessageResponse] = []
+        for msg in messages:
+            role = msg.sender_role.upper() if isinstance(msg.sender_role, str) else msg.sender_role.value.upper()
+            msg_resp = MessageResponse.model_validate(msg)
+
+            if role == "AGENT":
+                metadatas = msg.metadatas or {}
+                agent_id_raw = metadatas.get("agent_id") if isinstance(metadatas, dict) else None
+                if agent_id_raw:
+                    try:
+                        agent_id = UUID(str(agent_id_raw))
+                    except Exception:
+                        agent_id = None
+
+                    if agent_id:
+                        msg_resp = msg_resp.model_copy(update={"agent_id": agent_id})
+
+                        agent_entity = agents_cache.get(agent_id)
+                        if agent_entity is None and agent_id not in agents_cache:
+                            agent_entity = agent_repo.find_one_by_id(agent_id)
+                            agents_cache[agent_id] = agent_entity
+
+                        if agent_entity and agent_entity.agent_profile_image:
+                            file_id = agent_entity.agent_profile_image
+                            file_entity = files_cache.get(file_id)
+                            if file_entity is None and file_id not in files_cache:
+                                file_entity = file_repo.find_one_by_id(file_id)
+                                files_cache[file_id] = file_entity
+
+                            if file_entity and file_entity.file_path:
+                                url = build_upload_url(file_entity.file_path)
+                                msg_resp = msg_resp.model_copy(update={"agent_profile_image": url})
+
+            message_responses.append(msg_resp)
+
         result = ConversationWithMessagesResponse(
             conversation_id=conversation.conversation_id,
             conversation_topic=conversation.conversation_topic,
@@ -143,7 +218,7 @@ async def get_conversation_by_id(
             updated_at=conversation.updated_at,
             updated_by=conversation.updated_by,
             total_messages=len(messages),
-            messages=[MessageResponse.model_validate(msg) for msg in messages]
+            messages=message_responses
         )
         return success_response(result.model_dump())
     except HTTPException:

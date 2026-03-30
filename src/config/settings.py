@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
     environment: str = Field(default="development", alias="ENVIRONMENT")
+    # Backend server base URL for constructing upload URLs
+    # Example: "https://dimension.objnx.com/api/" (see .env BACKEND_SERVER)
+    backend_server: str = Field(default="http://localhost/api/", alias="BACKEND_SERVER")
 
     # Database
     database_url: str = Field(..., alias="DATABASE_URL")

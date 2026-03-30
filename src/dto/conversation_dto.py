@@ -152,6 +152,10 @@ class MessageResponse(BaseResponseModel):
     conversation_id: Optional[UUID]
     message_content: Optional[str]
     sender_role: Optional[str]
+    # Only populated for messages where `sender_role == "AGENT"`
+    agent_id: Optional[UUID] = None
+    # Upload URL for the agent's profile image (constructed in controller)
+    agent_profile_image: Optional[str] = None
     metadatas: Optional[dict] = None
     created_at: Optional[datetime]
     created_by: Optional[UUID]

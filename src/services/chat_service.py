@@ -457,8 +457,10 @@ class ChatService:
                 reference_context=reference_context,
             )
         
-        # 5. Store AGENT response with citations in metadatas
-        agent_metadatas = {"citations": citations} if citations else None
+        # 5. Store AGENT response with agent_id (and citations when present) in metadatas
+        agent_metadatas: Dict[str, Any] = {"agent_id": str(agent_id)}
+        if citations:
+            agent_metadatas["citations"] = citations
         agent_msg = self.create_message(
             conversation_id=conversation_id,
             content=agent_response_content,
@@ -623,7 +625,8 @@ class ChatService:
             conversation_id=conversation_id,
             content=agent_response,
             sender_role=SenderRole.AGENT,
-            created_by=user_id
+            created_by=user_id,
+            metadatas={"agent_id": str(agent_id)},
         )
 
     def process_panel_message(
@@ -669,7 +672,8 @@ class ChatService:
                 conversation_id=conversation_id,
                 content=agent_content,
                 sender_role=SenderRole.AGENT,
-                created_by=user_id
+                created_by=user_id,
+                metadatas={"agent_id": str(agent_id)},
             )
             agent_responses.append(
                 AgentPanelResponseItem(
