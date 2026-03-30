@@ -73,16 +73,23 @@ def extract_text_from_images_vision(
     content_parts: List[dict] = []
     if system_prompt:
         content_parts.append({"type": "text", "text": system_prompt})
+    _md_hint = (
+        "If the page content is Markdown or markdown-like (headings with #, lists, links, fenced code blocks, tables), "
+        "output valid Markdown and keep those constructs; otherwise preserve clear structure in plain text."
+    )
     if single_page_prompt and len(images) == 1:
         prompt_text = (
             "You are an OCR system. Extract ALL text from this single document page image. "
             "Preserve layout, paragraphs, lists, tables, and reading order. "
+            f"{_md_hint} "
             "Return only the extracted text, no preamble or commentary."
         )
     else:
         prompt_text = (
             "Extract all text from these document images in order. "
-            "Preserve structure (paragraphs, lists, tables) and order. Return only the extracted text, no preamble."
+            "Preserve structure (paragraphs, lists, tables) and order. "
+            f"{_md_hint} "
+            "Return only the extracted text, no preamble."
         )
     content_parts.append({"type": "text", "text": prompt_text})
 

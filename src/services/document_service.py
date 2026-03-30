@@ -22,6 +22,14 @@ import src.services.llm_router as LLM
 
 logger = logging.getLogger(__name__)
 
+
+def _node_display_name_from_filename(filename: Optional[str]) -> str:
+    """Use filename without final extension (e.g. strip .pdf) for node_name."""
+    if not filename or not str(filename).strip():
+        return "Untitled"
+    base = Path(str(filename).strip()).stem
+    return (base if base else "Untitled")[:255]
+
 ReformatOption = str  # "rearrange" | "fill_missing_ai" | "to_bullet_points" | "to_table" | "summarize"
 
 # Job type for document processing (must exist in JobTypes table)
@@ -235,7 +243,9 @@ def apply_llm_extract(text: str, provider: str = "openai") -> str:
         return text
     system_prompt = (
         "Extract and structure the main content from the following text. "
-        "Clean up OCR artifacts, fix obvious errors, and return only the cleaned, structured content in markdown. "
+        "Clean up OCR artifacts, fix obvious errors, and return only the cleaned, structured content. "
+        "If the input is or should remain Markdown (headings #, lists, links, fenced code, tables), "
+        "output valid Markdown and preserve those constructs; do not strip markdown solely to plain text. "
         "No preamble or commentary."
     )
     try:
@@ -249,9 +259,17 @@ def apply_translate(text: str, translate_to: str, provider: str = "openai") -> s
     if not text or not text.strip() or not translate_to:
         return text
     if translate_to == "en":
-        system_prompt = "Translate the following content to English. Preserve structure (headings, lists, paragraphs). Return only the translated text in markdown. No preamble or commentary."
+        system_prompt = (
+            "Translate the following content to English. Preserve structure (headings, lists, paragraphs). "
+            "If the content is Markdown, keep valid Markdown (headings, lists, links, code fences, tables). "
+            "Return only the translated text. No preamble or commentary."
+        )
     elif translate_to == "th":
-        system_prompt = "Translate the following content to Thai. Preserve structure (headings, lists, paragraphs). Return only the translated text in markdown. No preamble or commentary."
+        system_prompt = (
+            "Translate the following content to Thai. Preserve structure (headings, lists, paragraphs). "
+            "If the content is Markdown, keep valid Markdown (headings, lists, links, code fences, tables). "
+            "Return only the translated text. No preamble or commentary."
+        )
     else:
         return text
     try:
@@ -386,7 +404,7 @@ def process_document(
     if translate_to in ("en", "th"):
         text = apply_translate(text, translate_to, provider=llm_provider)
 
-    node_name = (file_entity.file_name or "Untitled")[:255]
+    node_name = _node_display_name_from_filename(file_entity.file_name)
     job_id = None
     node_id: Optional[UUID] = None
 
