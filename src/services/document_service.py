@@ -1,27 +1,125 @@
 """
-Document service: parse file, optional reformat via LLM, create node, trigger embedding.
+Document service: parse file, optional reformat via LLM, create node via BACKEND_SERVER, trigger embedding.
 Supports running as a background job: run_process_document_task(ctx) for task_registry.
+
+Node rows are created by the main backend (POST /nodes), not ORM insert here.
+Authorization (Bearer token) is passed in job metadata for those HTTP calls — stored in DB with the job.
 """
 import asyncio
+import logging
 from pathlib import Path
 from typing import List, Optional, Any, Dict
-from uuid import UUID, uuid4
-from datetime import datetime
+from uuid import UUID
 
+import httpx
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
-from src.database.models import Files, Nodes
 from src.database import get_silent_db
 from src.repositories.file_repository import FileRepository
-from src.repositories.node_repository import NodeRepository
 from src.services.document_parse_service import parse_document, parse_pdf_via_llm_vision
 import src.services.llm_router as LLM
+
+logger = logging.getLogger(__name__)
 
 ReformatOption = str  # "rearrange" | "fill_missing_ai" | "to_bullet_points" | "to_table" | "summarize"
 
 # Job type for document processing (must exist in JobTypes table)
 JOB_TYPE_PROCESS_DOCUMENT = "process_document"
+
+DEFAULT_WORKSPACE_RELATION_TYPE = "PART"
+BACKEND_REQUEST_TIMEOUT = 120.0
+
+
+def _backend_api_base() -> str:
+    return (settings.backend_server or "").rstrip("/")
+
+
+def _parse_backend_envelope(data: Any) -> Dict[str, Any]:
+    """Expect { status: true, resultData: {...} } from BACKEND_SERVER."""
+    if not isinstance(data, dict):
+        raise ValueError("Backend response is not a JSON object")
+    if not data.get("status"):
+        err = data.get("resultData") or data.get("message") or data.get("error") or data
+        raise ValueError(f"Backend request failed: {err}")
+    inner = data.get("resultData")
+    if not isinstance(inner, dict):
+        raise ValueError("Backend response missing resultData object")
+    return inner
+
+
+def generate_node_desc_from_content(node_content_md: str, provider: str = "openai", max_input_chars: int = 120000) -> str:
+    """LLM-generated short description for node_desc (node_content_md unchanged)."""
+    text = (node_content_md or "").strip()
+    if not text:
+        return ""
+    chunk = text[:max_input_chars]
+    system_prompt = (
+        "Write a concise node description (2–4 sentences) summarizing the document for a knowledge base. "
+        "No title line, no markdown headings, no bullet list unless essential. Plain text or light markdown only."
+    )
+    try:
+        out = LLM.simple_chat(chunk, provider=provider, system_prompt=system_prompt)
+        return (out or "").strip()[:2000]
+    except Exception:
+        return (chunk[:500] + "…") if len(chunk) > 500 else chunk
+
+
+def _http_client(auth_header: str) -> httpx.Client:
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    if auth_header:
+        headers["Authorization"] = auth_header
+    return httpx.Client(timeout=BACKEND_REQUEST_TIMEOUT, headers=headers)
+
+
+def create_node_on_backend(
+    node_name: str,
+    node_desc: str,
+    node_content_md: str,
+    auth_header: str,
+) -> UUID:
+    url = f"{_backend_api_base()}/nodes"
+    payload = {
+        "node_name": node_name[:255],
+        "node_desc": node_desc or "",
+        "node_content_md": node_content_md or "",
+    }
+    with _http_client(auth_header) as client:
+        r = client.post(url, json=payload)
+        r.raise_for_status()
+        inner = _parse_backend_envelope(r.json())
+    raw_id = inner.get("node_id")
+    if not raw_id:
+        raise ValueError("Backend /nodes response missing resultData.node_id")
+    return UUID(str(raw_id))
+
+
+def create_workspace_relation_on_backend(
+    workspace_id: UUID,
+    node_id: UUID,
+    auth_header: str,
+    relation_type_id: str = DEFAULT_WORKSPACE_RELATION_TYPE,
+) -> None:
+    url = f"{_backend_api_base()}/relations"
+    payload = {
+        "parent_id": str(workspace_id),
+        "child_id": str(node_id),
+        "relation_type_id": relation_type_id,
+    }
+    with _http_client(auth_header) as client:
+        r = client.post(url, json=payload)
+        r.raise_for_status()
+        try:
+            body = r.json()
+        except Exception:
+            body = None
+        if isinstance(body, dict) and body.get("status") is False:
+            raise ValueError(f"Backend /relations failed: {body}")
+        if isinstance(body, dict) and body.get("status") is True:
+            try:
+                _parse_backend_envelope(body)
+            except ValueError:
+                pass
 
 
 def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
@@ -41,9 +139,19 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
     use_llm_extract = meta.get("use_llm_extract", False)
     max_pages_per_call = int(meta.get("max_pages_per_call") or 5)
     translate_to = meta.get("translate_to")  # "en" | "th" | None
+    workspace_id_raw = meta.get("workspace_id")
+    workspace_id: Optional[UUID] = None
+    if workspace_id_raw:
+        workspace_id = UUID(workspace_id_raw) if isinstance(workspace_id_raw, str) else workspace_id_raw
+    authorization = (meta.get("authorization") or meta.get("Authorization") or "").strip() or None
 
     if not file_id:
         raise ValueError("metadata.file_id is required")
+    if create_node:
+        if workspace_id is None:
+            raise ValueError("metadata.workspace_id is required when create_node is true")
+        if not authorization:
+            raise ValueError("metadata.authorization is required when create_node is true")
 
     db_gen = get_silent_db()
     db = next(db_gen)
@@ -58,6 +166,8 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
             use_llm_extract=use_llm_extract,
             max_pages_per_call=max_pages_per_call,
             translate_to=translate_to,
+            workspace_id=workspace_id,
+            authorization=authorization,
         )
         embedding_job_id = None
         if create_node and result.get("node_id"):
@@ -175,10 +285,13 @@ def process_document(
     use_llm_extract: bool = False,
     max_pages_per_call: int = 5,
     translate_to: Optional[str] = None,
+    workspace_id: Optional[UUID] = None,
+    authorization: Optional[str] = None,
 ) -> dict:
     """
-    Load file, parse, optionally reformat/translate, create node, trigger embedding job.
+    Load file, parse, optionally reformat/translate, create node via BACKEND_SERVER, trigger embedding job.
     translate_to: 'en' = English, 'th' = Thai, None = no translation.
+    When create_node is true, workspace_id and authorization (Bearer) are required for /nodes and /relations.
     Returns dict with node_id, node_name, job_id (if create_node).
     """
     repo_file = FileRepository(db)
@@ -266,42 +379,36 @@ def process_document(
 
     if use_llm_extract and not used_vision_fallback:
         text = apply_llm_extract(text, provider=llm_provider)
-    if reformat_options:
-        text = apply_reformat(text, reformat_options, provider=llm_provider)
+    # null / [] => skip reformat; persist extraction (+ optional extract/translate) as node_content_md
+    reformat_opts: List[str] = list(reformat_options) if reformat_options else []
+    if reformat_opts:
+        text = apply_reformat(text, reformat_opts, provider=llm_provider)
     if translate_to in ("en", "th"):
         text = apply_translate(text, translate_to, provider=llm_provider)
 
     node_name = (file_entity.file_name or "Untitled")[:255]
-    summary = None
-    if reformat_options and "summarize" in reformat_options and len(text) > 500:
-        summary = text[:500].strip()  # Use first portion as node_desc placeholder
-
-    node_repo = NodeRepository(db)
-    now = datetime.utcnow()
-    node_id = uuid4()
-    node = Nodes(
-        node_id=node_id,
-        node_name=node_name,
-        node_desc=summary,
-        node_content_md=text,
-        node_location_x=None,
-        node_location_y=None,
-        node_location_z=None,
-        created_at=now,
-        created_by=user_id,
-        updated_at=now,
-        updated_by=user_id,
-    )
-    node_repo.create(node)
-
     job_id = None
+    node_id: Optional[UUID] = None
+
     if create_node:
-        # Caller (controller) will await node_embedding_service.embed_node() and pass job_id
-        pass
+        if workspace_id is None or not authorization or not authorization.strip():
+            raise ValueError("workspace_id and authorization are required when create_node is true")
+        node_desc = generate_node_desc_from_content(text, provider=llm_provider)
+        node_id = create_node_on_backend(
+            node_name=node_name,
+            node_desc=node_desc,
+            node_content_md=text,
+            auth_header=authorization.strip(),
+        )
+        create_workspace_relation_on_backend(
+            workspace_id=workspace_id,
+            node_id=node_id,
+            auth_header=authorization.strip(),
+        )
 
     return {
         "file_id": file_id,
         "node_id": node_id,
-        "node_name": node_name,
+        "node_name": node_name if create_node else None,
         "job_id": job_id,
     }

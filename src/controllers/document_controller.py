@@ -3,13 +3,12 @@ Document controller.
 File upload and import (store file, create Files row).
 Process: parse, reformat, create node, trigger embedding.
 """
-import os
 import uuid
 from pathlib import Path
 from uuid import UUID
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
@@ -18,7 +17,6 @@ from src.database.models import Files
 from src.dto.document_dto import (
     DocumentImportResponse,
     DocumentProcessRequest,
-    DocumentProcessResponse,
     ALLOWED_EXTENSIONS,
     ALLOWED_IMPORT_MIMES,
 )
@@ -48,15 +46,14 @@ def _allowed_file(filename: str, content_type: str | None) -> bool:
     "/import",
     status_code=status.HTTP_201_CREATED,
     summary="Import a document",
-    description="Upload a file (.docx, .pdf, .jpg, .png). File is stored and a Files record is created. Set auto_process=true to start a process job; otherwise call POST /documents/{file_id}/process.",
+    description="Upload a file (.docx, .pdf, .jpg, .png). File is stored and a Files record is created only. To parse and create nodes, call POST /documents/{file_id}/process.",
 )
 async def import_document(
     file: UploadFile = File(...),
-    auto_process: bool = Query(False, description="If true, register a process job so parsing/node/embedding runs after upload; default is upload only"),
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
 ):
-    """Upload a single file; validate type, store on disk, create Files row. Optionally start processing job automatically."""
+    """Upload a single file; validate type, store on disk, create Files row."""
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -102,24 +99,6 @@ async def import_document(
     repo = FileRepository(db)
     created = repo.create(file_entity)
 
-    job_id = None
-    if auto_process:
-        metadata = {
-            "file_id": str(created.file_id),
-            "reformat_options": [],
-            "llm_provider": "openai",
-            "create_node": True,
-            "use_llm_extract": False,
-            "max_pages_per_call": 5,
-        }
-        job_id = await job_service.register_job(
-            user_id=user_id,
-            job_type=JOB_TYPE_PROCESS_DOCUMENT,
-            metadata=metadata,
-            job_start_time=datetime.utcnow(),
-            db=db,
-        )
-
     response = DocumentImportResponse(
         file_id=created.file_id,
         file_name=created.file_name,
@@ -127,7 +106,6 @@ async def import_document(
         mime_type=created.mime_type,
         file_path=created.file_path,
         created_at=created.created_at,
-        job_id=job_id,
     )
     return success_response(response.model_dump())
 
@@ -136,11 +114,12 @@ async def import_document(
     "/{file_id}/process",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process imported document (async)",
-    description="Register a document processing job. Job daemon picks it up; poll GET /jobs/{job_id} for status. On SUCCESS, metadata contains file_id, node_id, node_name, embedding_job_id.",
+    description="Register a document processing job. Requires workspace_id in body when create_node=true; send Authorization header for BACKEND_SERVER /nodes and /relations. Poll GET /jobs/{job_id} for status.",
 )
 async def process_imported_document(
     file_id: UUID,
     request: DocumentProcessRequest,
+    authorization: str | None = Header(None, alias="Authorization"),
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
 ):
@@ -154,8 +133,21 @@ async def process_imported_document(
     if file_entity.created_by != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to process this file")
 
+    if request.create_node:
+        if request.workspace_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="workspace_id is required when create_node=true",
+            )
+        if not authorization or not authorization.strip():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization header is required when create_node=true (for BACKEND_SERVER /nodes and /relations)",
+            )
+
     metadata = {
         "file_id": str(file_id),
+        "workspace_id": str(request.workspace_id) if request.workspace_id else None,
         "reformat_options": request.reformat_options or [],
         "llm_provider": request.llm_provider or "openai",
         "create_node": request.create_node,
@@ -163,6 +155,8 @@ async def process_imported_document(
         "max_pages_per_call": request.max_pages_per_call if request.max_pages_per_call is not None else 5,
         "translate_to": request.translate_to,
     }
+    if authorization:
+        metadata["authorization"] = authorization.strip()
 
     job_id = await job_service.register_job(
         user_id=user_id,

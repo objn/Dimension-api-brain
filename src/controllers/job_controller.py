@@ -300,6 +300,19 @@ async def create_job(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="metadata_json.file_id is required for process_document jobs",
             )
+        if job_type_value == "process_document" and meta.get("create_node", True):
+            if not meta.get("workspace_id"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="metadata_json.workspace_id is required for process_document when create_node is true",
+                )
+            auth = (meta.get("authorization") or meta.get("Authorization") or "").strip()
+            if not auth:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="metadata_json.authorization (Bearer token) is required for process_document when create_node is true",
+                )
+            meta["authorization"] = auth
         if job_type_value == "node_content_embedding" and not meta.get("node_id"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
