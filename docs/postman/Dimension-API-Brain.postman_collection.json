@@ -245,7 +245,7 @@
               "raw": "{\n  \"node_a\": \"{{node_a}}\",\n  \"node_b\": \"{{node_b}}\"\n}"
             },
             "url": "{{base_url}}/suggest-relation",
-            "description": "Reads content of node_a and node_b, returns 3-5 suggested relations (relation_type_id + explanation) for user to choose."
+            "description": "Reads content of node_a and node_b; LLM picks exactly one relation_type_id from RelationTypes. Response data.suggestion: { relation_type_id, explanation }."
           }
         }
       ]

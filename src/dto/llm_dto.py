@@ -2,7 +2,6 @@
 DTOs for LLM utility endpoints (e.g. suggest relation between nodes).
 """
 from pydantic import BaseModel, Field
-from typing import List, Optional
 from uuid import UUID
 
 
@@ -21,35 +20,32 @@ class SuggestRelationRequest(BaseModel):
 
 
 class SuggestRelationItem(BaseModel):
-    """One suggested relation between two contents."""
-    relation_type_id: str = Field(..., description="Suggested relation type identifier")
+    """One suggested relation between two contents (relation_type_id must exist in RelationTypes)."""
+    relation_type_id: str = Field(..., description="Chosen relation type id from database RelationTypes")
     explanation: str = Field(..., description="Short explanation of the relation")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "relation_type_id": "RELATED",
-                "explanation": "Both nodes discuss the same topic from different angles."
+                "relation_type_id": "CONTAINS",
+                "explanation": "Node A contains details expanded in Node B."
             }
         }
 
 
 class SuggestRelationResponse(BaseModel):
-    """Response with 3-5 relation suggestions for the user to choose from."""
-    suggestions: List[SuggestRelationItem] = Field(
+    """Response with exactly one LLM-chosen relation from RelationTypes."""
+    suggestion: SuggestRelationItem = Field(
         ...,
-        min_length=1,
-        max_length=5,
-        description="List of 3 to 5 suggested relations"
+        description="Single best-matching relation type from the database for the two nodes",
     )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "suggestions": [
-                    {"relation_type_id": "RELATED", "explanation": "Both cover the same theme."},
-                    {"relation_type_id": "CONTAINS", "explanation": "Node A contains details expanded in Node B."},
-                    {"relation_type_id": "DEPENDS_ON", "explanation": "Node B builds on concepts in Node A."}
-                ]
+                "suggestion": {
+                    "relation_type_id": "CONTAINS",
+                    "explanation": "Node A contains details expanded in Node B.",
+                }
             }
         }
