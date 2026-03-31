@@ -148,6 +148,7 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
     reformat_options = meta.get("reformat_options") or []
     llm_provider = meta.get("llm_provider") or "openai"
     create_node = meta.get("create_node", True)
+    auto_embed = bool(meta.get("auto_embed", True))
     max_pages_per_call = int(meta.get("max_pages_per_call") or 5)
     workspace_id_raw = meta.get("workspace_id")
     workspace_id: Optional[UUID] = None
@@ -178,7 +179,7 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
             authorization=authorization,
         )
         embedding_job_id = None
-        if create_node and result.get("node_id"):
+        if auto_embed and create_node and result.get("node_id"):
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -188,6 +189,13 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
                         user_id=user_id,
                         db=db,
                         force_reembed=False,
+                        metadata_extra={
+                            "auto_embed": True,
+                            "triggered_by": "process_document",
+                            "parent_job_id": str(ctx.job_id),
+                            "file_id": str(file_id),
+                            "workspace_id": str(workspace_id) if workspace_id else None,
+                        },
                     )
                 )
                 loop.close()

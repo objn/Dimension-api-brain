@@ -75,6 +75,7 @@ class NodeEmbeddingService:
         db: Session,
         force_reembed: bool = False,
         job_start_time: Optional[datetime] = None,
+        metadata_extra: Optional[Dict[str, Any]] = None,
     ) -> UUID:
         """
         Start embedding job for a node's content.
@@ -100,16 +101,25 @@ class NodeEmbeddingService:
         if not node:
             raise ValueError(f"Node {node_id} not found")
 
+        base_metadata: Dict[str, Any] = {
+            "job_type": "node_content_embedding",
+            "node_id": str(node_id),
+            "node_name": node.node_name,
+            "force_reembed": force_reembed,
+            "stage": RAGStage.INIT.value,
+            "progress": 0,
+        }
+        if metadata_extra:
+            # Do not allow overriding core identifiers; merge the rest.
+            for k in ("job_type", "node_id", "node_name"):
+                metadata_extra.pop(k, None)
+            base_metadata.update(metadata_extra)
+
         reg_kwargs: Dict[str, Any] = dict(
             user_id=user_id,
             job_type="node_content_embedding",
             metadata={
-                "job_type": "node_content_embedding",
-                "node_id": str(node_id),
-                "node_name": node.node_name,
-                "force_reembed": force_reembed,
-                "stage": RAGStage.INIT.value,
-                "progress": 0,
+                **base_metadata,
             },
             db=db,
         )

@@ -54,7 +54,11 @@ class DocumentProcessRequest(BaseModel):
             return []
         return v
     llm_provider: Optional[Literal["openai", "gemini", "anthropic"]] = Field(default="openai")
-    create_node: bool = Field(default=True, description="Create a Node from extracted content and run embedding")
+    create_node: bool = Field(default=True, description="Create a Node from extracted content")
+    auto_embed: bool = Field(
+        default=True,
+        description="When create_node=true, automatically create a separate embedding job for the created node.",
+    )
     max_pages_per_call: Optional[int] = Field(
         default=5,
         ge=1,

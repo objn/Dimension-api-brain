@@ -151,6 +151,7 @@ async def process_imported_document(
         "reformat_options": request.reformat_options or [],
         "llm_provider": request.llm_provider or "openai",
         "create_node": request.create_node,
+        "auto_embed": bool(request.auto_embed),
         "max_pages_per_call": request.max_pages_per_call if request.max_pages_per_call is not None else 5,
     }
     if authorization:
