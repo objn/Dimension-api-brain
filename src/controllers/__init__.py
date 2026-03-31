@@ -3,6 +3,7 @@ from .conversation_controller import router as conversation_router
 from .metadata_controller import router as metadata_router
 from .example_gen_controller import router as example_gen_router
 from .job_controller import router as job_router
+from .embedding_controller import router as embedding_router
 from .rag_controller import router as rag_router
 from .document_controller import router as document_router
 from .llm_controller import router as llm_router
@@ -14,6 +15,7 @@ __all__ = [
     "metadata_router",
     "example_gen_router",
     "job_router",
+    "embedding_router",
     "rag_router",
     "document_router",
     "llm_router",

@@ -5,6 +5,7 @@ Defines enums, dataclasses, and constants for RAG operations.
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Optional
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -146,3 +147,17 @@ class RAGSearchResponse(BaseModel):
     """Response for semantic search."""
     count: int
     results: List[RAGSearchResultItem]
+
+
+class EmbeddingProcessRequest(BaseModel):
+    """Request to register a node_content_embedding job (same metadata shape as POST /jobs)."""
+
+    node_id: UUID = Field(..., description="Node ID to chunk and embed (must exist in brain DB)")
+    force_reembed: bool = Field(
+        default=False,
+        description="If True, re-embed all chunks even when content hash unchanged",
+    )
+    job_start_time: Optional[datetime] = Field(
+        default=None,
+        description="When the job daemon may pick up this job. Omit for immediate (utcnow).",
+    )

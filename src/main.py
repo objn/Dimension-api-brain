@@ -10,6 +10,7 @@ from src.controllers import (
     metadata_router,
     example_gen_router,
     job_router,
+    embedding_router,
     rag_router,
     document_router,
     llm_router,
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(metadata_router)
     app.include_router(example_gen_router)
     app.include_router(job_router)
+    app.include_router(embedding_router)
     app.include_router(rag_router)
     app.include_router(document_router)
     app.include_router(llm_router)

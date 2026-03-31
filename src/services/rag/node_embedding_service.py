@@ -73,7 +73,8 @@ class NodeEmbeddingService:
         node_id: UUID,
         user_id: UUID,
         db: Session,
-        force_reembed: bool = False
+        force_reembed: bool = False,
+        job_start_time: Optional[datetime] = None,
     ) -> UUID:
         """
         Start embedding job for a node's content.
@@ -86,6 +87,7 @@ class NodeEmbeddingService:
             user_id: ID of the user requesting
             db: Database session
             force_reembed: If True, re-embed all chunks even if unchanged
+            job_start_time: If set, passed to register_job; if None, register_job uses its default schedule.
             
         Returns:
             Job ID for tracking
@@ -97,9 +99,8 @@ class NodeEmbeddingService:
         node = db.query(Nodes).filter(Nodes.node_id == node_id).first()
         if not node:
             raise ValueError(f"Node {node_id} not found")
-        
-        # Register job (DB only - daemon will activate it when ready)
-        job_id = await job_service.register_job(
+
+        reg_kwargs: Dict[str, Any] = dict(
             user_id=user_id,
             job_type="node_content_embedding",
             metadata={
@@ -108,10 +109,14 @@ class NodeEmbeddingService:
                 "node_name": node.node_name,
                 "force_reembed": force_reembed,
                 "stage": RAGStage.INIT.value,
-                "progress": 0
+                "progress": 0,
             },
-            db=db
+            db=db,
         )
+        if job_start_time is not None:
+            reg_kwargs["job_start_time"] = job_start_time
+
+        job_id = await job_service.register_job(**reg_kwargs)
         
         logger.info(f"Registered embedding job {job_id} for node {node_id}")
         return job_id
