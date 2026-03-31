@@ -26,6 +26,7 @@ import traceback
 import logging
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import update
 
 from src.database.models import Job, Metadatas, Jobtypes
@@ -510,6 +511,10 @@ class JobService:
         }
         if isinstance(result, dict):
             metadata.update(result)
+            # Top-level node_id for consumers (e.g. process_document SUCCESS); JSON-serializable string
+            nid = result.get("node_id")
+            if nid is not None:
+                metadata["node_id"] = str(nid)
         self._update_status(job_id, JobStatus.SUCCESS, metadata)
         self._trigger_callbacks(job_id, JobStatus.SUCCESS, result)
         self._cleanup_future(job_id)
@@ -746,11 +751,12 @@ class JobService:
             ).first()
             
             if metadata:
-                current = metadata.metadata_json or {}
+                current = dict(metadata.metadata_json or {})
                 current["progress"] = progress
                 current["progress_message"] = message
                 current["progress_updated_at"] = datetime.utcnow().isoformat()
                 metadata.metadata_json = current
+                flag_modified(metadata, "metadata_json")
                 metadata.updated_at = datetime.utcnow()
                 db.commit()
         finally:
@@ -908,12 +914,12 @@ class JobService:
         ).first()
         
         if metadata:
-            current = metadata.metadata_json or {}
+            # Copy so we never mutate the persisted dict in-place without flagging the JSON column
+            current = dict(metadata.metadata_json or {})
+            status_history = list(current.get("status_history") or [])
+            current["status_history"] = status_history
             
-            if "status_history" not in current:
-                current["status_history"] = []
-            
-            current["status_history"].append({
+            status_history.append({
                 "status": status.value,
                 "timestamp": now.isoformat(),
                 "data": metadata_update
@@ -926,6 +932,7 @@ class JobService:
             current["last_updated"] = now.isoformat()
             
             metadata.metadata_json = current
+            flag_modified(metadata, "metadata_json")
             metadata.updated_at = now
         elif metadata_update:
             context = self._get_context(job_id)
