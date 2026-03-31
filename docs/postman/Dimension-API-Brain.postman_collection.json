@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Dimension API Brain",
-    "description": "LLM Service API: agents, conversations, chat, RAG, documents, jobs, metadatas, example gen, LLM suggest relation. All endpoints require Bearer token (JWT) except health/root.\n\n► ใช้ token จาก Globals: ใน Postman ไปที่ Manage Environments (ไอคอนตา) → Globals → Add ตัวแปรชื่อ token ค่าเป็น JWT แล้ว Save แล้ว collection นี้จะใช้ {{token}} จาก Globals ให้อัตโนมัติ",
+    "description": "LLM Service API: agents, conversations, chat, RAG, embedding, documents, jobs, metadatas, example gen, LLM suggest relation. All endpoints require Bearer token (JWT) except health/root.\n\n► POST /embedding/process registers node_content_embedding (typed body). If reverse proxy mounts the app under /llm, set base_url to http://localhost:8000/llm (or prefix paths).\n\n► ใช้ token จาก Globals: ใน Postman ไปที่ Manage Environments (ไอคอนตา) → Globals → Add ตัวแปรชื่อ token ค่าเป็น JWT แล้ว Save แล้ว collection นี้จะใช้ {{token}} จาก Globals ให้อัตโนมัติ",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,6 +16,7 @@
     { "key": "conversation_id", "value": "" },
     { "key": "agent_id", "value": "" },
     { "key": "file_id", "value": "" },
+    { "key": "node_id", "value": "" },
     { "key": "job_id", "value": "" },
     { "key": "metadata_id", "value": "" },
     { "key": "entity_id", "value": "" },
@@ -268,6 +269,24 @@
       ]
     },
     {
+      "name": "Embedding",
+      "item": [
+        {
+          "name": "Register node embedding (process)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"node_id\": \"{{node_id}}\",\n  \"force_reembed\": false,\n  \"job_start_time\": null\n}"
+            },
+            "url": "{{base_url}}/embedding/process",
+            "description": "202 Accepted. Same job as POST /jobs with job_type node_content_embedding. Body: node_id (required), force_reembed (optional, default false), job_start_time (optional; null or omit = immediate utcnow). Node must exist in brain DB. Set collection variable node_id or paste UUID from process_document job metadata on SUCCESS. Poll GET /jobs/{job_id}."
+          }
+        }
+      ]
+    },
+    {
       "name": "Documents",
       "item": [
         {
@@ -281,20 +300,7 @@
               ]
             },
             "url": "{{base_url}}/documents/import",
-            "description": "Upload file (default: upload only). Add ?auto_process=true to start processing and get job_id."
-          }
-        },
-        {
-          "name": "Import document (auto-process)",
-          "request": {
-            "method": "POST",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                { "key": "file", "type": "file", "src": "" }
-              ]
-            },
-            "url": "{{base_url}}/documents/import?auto_process=true"
+            "description": "Upload file; creates Files row only. Call POST /documents/{file_id}/process to parse and (optional) create node + embedding."
           }
         },
         {
@@ -304,10 +310,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"workspace_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"reformat_options\": [\"summarize\", \"to_bullet_points\"],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"max_pages_per_call\": 5\n}"
+              "raw": "{\n  \"workspace_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"reformat_options\": [],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"max_pages_per_call\": 5\n}"
             },
             "url": "{{base_url}}/documents/{{file_id}}/process",
-            "description": "202 Accepted. Poll GET /jobs/{job_id} for status. On SUCCESS metadata has node_id, node_name, embedding_job_id."
+            "description": "202 Accepted. When create_node=true send Authorization: Bearer <token> header (for BACKEND_SERVER /nodes and /relations) and workspace_id in body. Poll GET /jobs/{job_id}. On SUCCESS metadata_json includes node_id (and embedding_job_id if embedding job registered)."
           }
         }
       ]
@@ -338,9 +344,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"job_type\": \"node_content_embedding\",\n  \"job_start_time\": null,\n  \"job_result\": \"PENDING\",\n  \"metadata_json\": {},\n  \"content_to_summarize\": null\n}"
+              "raw": "{\n  \"job_type\": \"node_content_embedding\",\n  \"job_start_time\": null,\n  \"metadata_json\": {\n    \"node_id\": \"00000000-0000-0000-0000-000000000000\",\n    \"force_reembed\": false\n  },\n  \"content_to_summarize\": null\n}"
             },
-            "url": "{{base_url}}/jobs"
+            "url": "{{base_url}}/jobs",
+            "description": "Example: node_content_embedding. Alternate: POST /embedding/process with typed body. For process_document set job_type and metadata_json.file_id, workspace_id, authorization when create_node=true."
           }
         },
         {
