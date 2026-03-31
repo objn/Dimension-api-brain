@@ -95,6 +95,8 @@ def parse_pdf_via_llm_vision(
     Extract text from a PDF by rendering each page to an image and sending to a vision LLM
     (OCR-style: one page per call by default). Loop over each page, extract text, concatenate.
     Set max_pages_per_call > 1 to batch pages and reduce API calls (e.g. 5 for speed).
+
+    Requires Poppler (e.g. poppler-utils) on PATH for pdf2image; no fallback.
     """
     try:
         from pdf2image import convert_from_path
