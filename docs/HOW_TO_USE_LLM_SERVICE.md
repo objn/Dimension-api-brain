@@ -132,11 +132,9 @@ Returns semantic search results over embedded node chunks: `node_id`, `chunk_id`
 
 - **Content-Type:** `multipart/form-data`
 - **Body:** One file field (e.g. `file`) with a file attachment.
-- **Query:** `auto_process` (optional, default **`false`**) — When `true`, a **process job is started** after the file is stored; the response then includes `job_id` and you can poll `GET /jobs/{job_id}`. When `false` (default), only the file is stored and you must call `POST /documents/{file_id}/process` to start processing.
-
 **Allowed types:** `.docx`, `.pdf`, `.jpg`, `.jpeg`, `.png`
 
-**Response:** `file_id`, `file_name`, `file_size`, `mime_type`, `file_path`, `created_at`. When `auto_process` was true, response also includes `job_id`. Save `file_id` (and `job_id` if present) for polling.
+**Response:** `file_id`, `file_name`, `file_size`, `mime_type`, `file_path`, `created_at`. Import only stores the file; call `POST /documents/{file_id}/process` to parse and create nodes.
 
 ### 7.2 Process document (parse, reformat, create node, embed)
 
@@ -148,14 +146,15 @@ Processing runs **asynchronously**: the API registers a job and returns immediat
 
 ```json
 {
+  "workspace_id": "YOUR-WORKSPACE-UUID",
   "reformat_options": ["summarize", "to_bullet_points"],
   "llm_provider": "openai",
   "create_node": true,
-  "use_llm_extract": false,
-  "max_pages_per_call": 5,
-  "translate_to": null
+  "max_pages_per_call": 5
 }
 ```
+
+Send header **`Authorization: Bearer <token>`** when `create_node` is true (for main backend `/nodes` and `/relations`).
 
 - **reformat_options:** Optional list; you can select one or more or none:
   - **rearrange** — Reorder sections for clarity
@@ -166,18 +165,15 @@ Processing runs **asynchronously**: the API registers a job and returns immediat
 
 - **create_node:** If `true`, a Node is created with the (optionally reformatted) text and an **embedding job** is started. When the process job completes, metadata includes `embedding_job_id` to poll for embedding completion.
 
-- **use_llm_extract:** If `true`, the LLM is used to extract, clean, or structure content:
-  - **When local extraction works:** Text is sent to the LLM for cleanup/structure (post-OCR).
-  - **When local extraction fails** (e.g. "Could not extract text from PDF"): The PDF is rendered to images and sent to a **vision-capable LLM** in batches to extract text. Large PDFs (e.g. 185 pages) are handled by processing a few pages per LLM call (see **max_pages_per_call**).
-- **max_pages_per_call:** When LLM vision is used for PDFs, this is the number of pages per LLM request (default 5, max 20). Use 1 for OCR-style (one page per call). Use 5–10 for fewer API calls on large docs.
-- **translate_to:** Optional. If `"en"` the extracted content is translated to **English** via LLM before creating the node; if `"th"` translated to **Thai**. If `null` or omitted, no translation is applied.
+- **Extraction (always LLM-heavy for accuracy):** **PDF** and **images** (`.jpg`/`.jpeg`/`.png`) are read with a **vision LLM**. **DOCX** is parsed locally, then the text is always passed through an **LLM refinement** step (`apply_llm_extract`) before optional reformat.
+- **max_pages_per_call:** For **PDF** vision extraction, pages per LLM request (default 5, max 20). Use 1 for OCR-style (one page per call). Use 5–10 for fewer API calls on large docs.
 
 **Response:** `202 Accepted` with `file_id`, `job_id` (process job). `node_id` and `node_name` are `null` until the job completes; then they appear in `GET /jobs/{job_id}` metadata.
 
 **JobTypes:** The job type `process_document` must exist in the `JobTypes` table. If you get a foreign-key error when creating the job, run:
 `INSERT INTO "JobTypes" ("Job_type_id") VALUES ('process_document') ON CONFLICT DO NOTHING;`
 
-**Scanned PDFs:** The service uses OCR (Tesseract) when a PDF has little or no extractable text. Ensure Tesseract is installed on the server for scanned PDF support.
+**Scanned PDFs:** PDFs are handled primarily via **vision LLM** (not Tesseract-first). Ensure your LLM provider supports vision for PDF page images.
 
 ---
 

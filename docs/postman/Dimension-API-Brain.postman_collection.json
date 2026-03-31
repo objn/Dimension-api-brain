@@ -304,7 +304,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reformat_options\": [\"summarize\", \"to_bullet_points\"],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"use_llm_extract\": false,\n  \"max_pages_per_call\": 5,\n  \"translate_to\": null\n}"
+              "raw": "{\n  \"workspace_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"reformat_options\": [\"summarize\", \"to_bullet_points\"],\n  \"llm_provider\": \"openai\",\n  \"create_node\": true,\n  \"max_pages_per_call\": 5\n}"
             },
             "url": "{{base_url}}/documents/{{file_id}}/process",
             "description": "202 Accepted. Poll GET /jobs/{job_id} for status. On SUCCESS metadata has node_id, node_name, embedding_job_id."

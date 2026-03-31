@@ -151,9 +151,7 @@ async def process_imported_document(
         "reformat_options": request.reformat_options or [],
         "llm_provider": request.llm_provider or "openai",
         "create_node": request.create_node,
-        "use_llm_extract": request.use_llm_extract,
         "max_pages_per_call": request.max_pages_per_call if request.max_pages_per_call is not None else 5,
-        "translate_to": request.translate_to,
     }
     if authorization:
         metadata["authorization"] = authorization.strip()

@@ -57,7 +57,7 @@ class JobCreateRequest(BaseModel):
         description=(
             "Task parameters in Metadatas.metadata_json. "
             "For process_document include file_id (UUID string); when create_node is true also workspace_id and authorization (full Bearer value). "
-            "Optional: reformat_options, llm_provider, create_node, use_llm_extract, max_pages_per_call, translate_to. "
+            "Optional: reformat_options, llm_provider, create_node, max_pages_per_call. "
             "For node_content_embedding include node_id and optional force_reembed."
         ),
     )
@@ -75,9 +75,7 @@ class JobCreateRequest(BaseModel):
                     "reformat_options": [],
                     "llm_provider": "openai",
                     "create_node": True,
-                    "use_llm_extract": False,
                     "max_pages_per_call": 5,
-                    "translate_to": None,
                 },
             }
         }

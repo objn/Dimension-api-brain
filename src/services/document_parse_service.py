@@ -136,6 +136,28 @@ def parse_pdf_via_llm_vision(
     return "\n\n".join(text_parts).strip()
 
 
+def parse_image_via_llm_vision(
+    file_path: str, provider: str = "openai", timeout: float = 120.0
+) -> str:
+    """Extract text from a raster image (.jpg, .png) using a vision LLM (high-accuracy path)."""
+    try:
+        from PIL import Image
+        import src.services.llm_router as LLM
+    except ImportError as e:
+        raise ValueError(f"Vision image parsing requires Pillow and LLM router: {e}") from e
+    try:
+        img = Image.open(file_path)
+        return LLM.extract_text_from_images_vision(
+            [img],
+            provider=provider,
+            timeout=timeout,
+            single_page_prompt=True,
+        )
+    except Exception as e:
+        logger.error("Failed vision image parse %s: %s", file_path, e)
+        raise ValueError(f"Failed to parse image via vision: {e}") from e
+
+
 def parse_image(file_path: str) -> str:
     """Extract text from image (.jpg, .png) using OCR."""
     if not _check_ocr():

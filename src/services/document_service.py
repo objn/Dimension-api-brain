@@ -17,7 +17,11 @@ from sqlalchemy.orm import Session
 from src.config.settings import settings
 from src.database import get_silent_db
 from src.repositories.file_repository import FileRepository
-from src.services.document_parse_service import parse_document, parse_pdf_via_llm_vision
+from src.services.document_parse_service import (
+    parse_document,
+    parse_image_via_llm_vision,
+    parse_pdf_via_llm_vision,
+)
 import src.services.llm_router as LLM
 
 logger = logging.getLogger(__name__)
@@ -144,9 +148,7 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
     reformat_options = meta.get("reformat_options") or []
     llm_provider = meta.get("llm_provider") or "openai"
     create_node = meta.get("create_node", True)
-    use_llm_extract = meta.get("use_llm_extract", False)
     max_pages_per_call = int(meta.get("max_pages_per_call") or 5)
-    translate_to = meta.get("translate_to")  # "en" | "th" | None
     workspace_id_raw = meta.get("workspace_id")
     workspace_id: Optional[UUID] = None
     if workspace_id_raw:
@@ -171,9 +173,7 @@ def run_process_document_task(ctx: "JobContext") -> Dict[str, Any]:
             reformat_options=reformat_options,
             llm_provider=llm_provider,
             create_node=create_node,
-            use_llm_extract=use_llm_extract,
             max_pages_per_call=max_pages_per_call,
-            translate_to=translate_to,
             workspace_id=workspace_id,
             authorization=authorization,
         )
@@ -300,15 +300,13 @@ def process_document(
     reformat_options: Optional[List[ReformatOption]] = None,
     llm_provider: str = "openai",
     create_node: bool = True,
-    use_llm_extract: bool = False,
     max_pages_per_call: int = 5,
-    translate_to: Optional[str] = None,
     workspace_id: Optional[UUID] = None,
     authorization: Optional[str] = None,
 ) -> dict:
     """
-    Load file, parse, optionally reformat/translate, create node via BACKEND_SERVER, trigger embedding job.
-    translate_to: 'en' = English, 'th' = Thai, None = no translation.
+    Load file using LLM-first extraction for PDF/images (vision), local parse for DOCX, then always
+    apply_llm_extract for refinement. Optionally reformat, create node via BACKEND_SERVER, embedding job.
     When create_node is true, workspace_id and authorization (Bearer) are required for /nodes and /relations.
     Returns dict with node_id, node_name, job_id (if create_node).
     """
@@ -359,50 +357,42 @@ def process_document(
         )
 
     resolved_file_path = str(resolved)
-
-    is_pdf = (file_entity.mime_type or "").lower().strip().split(";")[0] == "application/pdf" or (
+    path_ext = resolved.suffix.lower()
+    mime_main = (file_entity.mime_type or "").split(";")[0].strip().lower() if file_entity.mime_type else ""
+    is_pdf = mime_main == "application/pdf" or path_ext == ".pdf" or (
         (file_entity.file_path or "").lower().endswith(".pdf")
     )
+    is_image = path_ext in (".jpg", ".jpeg", ".png") or (
+        mime_main.startswith("image/") if mime_main else False
+    )
 
-    text = ""
-    used_vision_fallback = False
-    try:
+    if is_pdf:
+        text = parse_pdf_via_llm_vision(
+            resolved_file_path,
+            provider=llm_provider,
+            max_pages_per_call=max_pages_per_call,
+            timeout_per_batch=120.0,
+        )
+    elif is_image:
+        text = parse_image_via_llm_vision(
+            resolved_file_path,
+            provider=llm_provider,
+            timeout=120.0,
+        )
+    else:
         text = parse_document(
             resolved_file_path,
             mime_type=file_entity.mime_type,
             filename=file_entity.file_name,
         )
-    except ValueError as e:
-        if is_pdf and "Could not extract" in str(e):
-            text = parse_pdf_via_llm_vision(
-                resolved_file_path,
-                provider=llm_provider,
-                max_pages_per_call=max_pages_per_call,
-                timeout_per_batch=120.0,
-            )
-            used_vision_fallback = True
-        else:
-            raise
-    if not text or len(text.strip()) < 100:
-        if is_pdf and not used_vision_fallback:
-            text = parse_pdf_via_llm_vision(
-                resolved_file_path,
-                provider=llm_provider,
-                max_pages_per_call=max_pages_per_call,
-                timeout_per_batch=120.0,
-            )
-            used_vision_fallback = True
     if not text or not text.strip():
         raise ValueError("Could not extract any text from the document.")
 
-    if use_llm_extract and not used_vision_fallback:
-        text = apply_llm_extract(text, provider=llm_provider)
+    text = apply_llm_extract(text, provider=llm_provider)
     # null / [] => skip reformat; persist extraction (+ optional extract/translate) as node_content_md
     reformat_opts: List[str] = list(reformat_options) if reformat_options else []
     if reformat_opts:
         text = apply_reformat(text, reformat_opts, provider=llm_provider)
-    if translate_to in ("en", "th"):
-        text = apply_translate(text, translate_to, provider=llm_provider)
 
     node_name = _node_display_name_from_filename(file_entity.file_name)
     job_id = None
