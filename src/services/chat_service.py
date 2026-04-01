@@ -20,6 +20,7 @@ from src.repositories.conversation_repository import ConversationRepository, Mes
 from src.repositories.agent_repository import AgentRepository
 from src.repositories.node_repository import NodeRepository
 from src.repositories.file_repository import FileRepository
+from src.config.settings import settings
 from src.dto.conversation_dto import (
     SenderRole,
     MessageResponse,
@@ -59,6 +60,10 @@ class ChatService:
         self.agent_repo = AgentRepository(db)
         self.node_repo = NodeRepository(db)
         self.file_repo = FileRepository(db)
+
+    def _public_agent_profile_image_url(self, file_id: UUID) -> str:
+        base = (settings.backend_server or "").rstrip("/")
+        return f"{base}/files/public/{file_id}"
     
     def _check_conversation_ownership(
         self,
@@ -459,6 +464,12 @@ class ChatService:
         
         # 5. Store AGENT response with agent_id (and citations when present) in metadatas
         agent_metadatas: Dict[str, Any] = {"agent_id": str(agent_id)}
+        if getattr(agent, "agent_name", None):
+            agent_metadatas["agent_name"] = agent.agent_name
+        if getattr(agent, "agent_profile_image", None):
+            agent_metadatas["agent_profile_image"] = self._public_agent_profile_image_url(
+                agent.agent_profile_image
+            )
         if citations:
             agent_metadatas["citations"] = citations
         agent_msg = self.create_message(
@@ -626,7 +637,15 @@ class ChatService:
             content=agent_response,
             sender_role=SenderRole.AGENT,
             created_by=user_id,
-            metadatas={"agent_id": str(agent_id)},
+            metadatas={
+                "agent_id": str(agent_id),
+                **({"agent_name": agent.agent_name} if getattr(agent, "agent_name", None) else {}),
+                **(
+                    {"agent_profile_image": self._public_agent_profile_image_url(agent.agent_profile_image)}
+                    if getattr(agent, "agent_profile_image", None)
+                    else {}
+                ),
+            },
         )
 
     def process_panel_message(
@@ -673,7 +692,15 @@ class ChatService:
                 content=agent_content,
                 sender_role=SenderRole.AGENT,
                 created_by=user_id,
-                metadatas={"agent_id": str(agent_id)},
+                metadatas={
+                    "agent_id": str(agent_id),
+                    **({"agent_name": agent.agent_name} if getattr(agent, "agent_name", None) else {}),
+                    **(
+                        {"agent_profile_image": self._public_agent_profile_image_url(agent.agent_profile_image)}
+                        if getattr(agent, "agent_profile_image", None)
+                        else {}
+                    ),
+                },
             )
             agent_responses.append(
                 AgentPanelResponseItem(
