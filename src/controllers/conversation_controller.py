@@ -164,6 +164,9 @@ async def get_conversation_by_id(
                             agents_cache[agent_id] = agent_repo.find_one_by_id(agent_id)
                         agent_entity = agents_cache.get(agent_id)
 
+                        if agent_entity and agent_entity.agent_name:
+                            md["agent_name"] = agent_entity.agent_name
+
                         if agent_entity and agent_entity.agent_profile_image:
                             md["agent_profile_image"] = public_agent_profile_image_url(
                                 agent_entity.agent_profile_image
