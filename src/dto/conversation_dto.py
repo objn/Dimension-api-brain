@@ -363,8 +363,6 @@ class ChatResponse(BaseModel):
     conversation_id: UUID
     user_message: MessageResponse
     agent_response: MessageResponse
-    agent_id: UUID
-    agent_name: Optional[str]
     messages_in_context: int = Field(description="Number of messages used as context")
 
     class Config:
@@ -391,8 +389,6 @@ class ChatResponse(BaseModel):
                         "citations": [{"index": 1, "source_type": "file", "snippet": "..."}]
                     }
                 },
-                "agent_id": "123e4567-e89b-12d3-a456-426614174999",
-                "agent_name": "Research Assistant",
                 "messages_in_context": 5
             }
         }

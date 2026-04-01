@@ -490,8 +490,6 @@ class ChatService:
             conversation_id=conversation_id,
             user_message=MessageResponse.model_validate(user_msg),
             agent_response=MessageResponse.model_validate(agent_msg),
-            agent_id=agent_id,
-            agent_name=agent.agent_name,
             messages_in_context=len(context),
         )
     
