@@ -1,5 +1,5 @@
 """
-LLM utility endpoints (e.g. suggest relation between two nodes).
+LLM utility endpoints (e.g. suggest relation between two entities).
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,10 +20,11 @@ router = APIRouter(
 @router.post(
     "/suggest-relation",
     status_code=status.HTTP_200_OK,
-    summary="Suggest one relation between two nodes (from RelationTypes)",
+    summary="Suggest one relation parent→child (from RelationTypes)",
     description=(
-        "Given two node UUIDs, loads allowed relation_type_id values from the RelationTypes table, "
-        "reads node content, and uses the LLM to pick exactly one of those types with a short explanation."
+        "Given parent_id/child_id and type_of_parent/type_of_child (node, workspace, file), loads text for each side, "
+        "loads allowed relation_type_id from RelationTypes, and uses the LLM to pick exactly one type with a short explanation. "
+        "File sides use DB metadata only (no document parse). Each entity must be owned by the caller (created_by)."
     ),
 )
 async def post_suggest_relation(
@@ -31,16 +32,24 @@ async def post_suggest_relation(
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
 ):
-    """Suggest a single relation between node_a and node_b using only types defined in RelationTypes."""
+    """Suggest a single directed relation from parent to child using only types defined in RelationTypes."""
     try:
         one = suggest_relation(
             db=db,
-            node_a_id=request.node_a,
-            node_b_id=request.node_b,
+            parent_id=request.parent_id,
+            child_id=request.child_id,
+            type_of_parent=request.type_of_parent,
+            type_of_child=request.type_of_child,
+            user_id=user_id,
             provider="openai",
         )
         response = SuggestRelationResponse(suggestion=SuggestRelationItem(**one))
         return success_response(response.model_dump())
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e) or "Forbidden",
+        ) from e
     except ValueError as e:
         if "not found" in str(e).lower():
             raise HTTPException(

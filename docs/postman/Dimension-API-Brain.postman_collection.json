@@ -237,16 +237,16 @@
       "name": "LLM",
       "item": [
         {
-          "name": "Suggest relation (between two nodes)",
+          "name": "Suggest relation (polymorphic parent/child)",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"node_a\": \"{{node_a}}\",\n  \"node_b\": \"{{node_b}}\"\n}"
+              "raw": "{\n  \"parent_id\": \"{{parent_id}}\",\n  \"child_id\": \"{{child_id}}\",\n  \"type_of_parent\": \"node\",\n  \"type_of_child\": \"node\"\n}"
             },
             "url": "{{base_url}}/suggest-relation",
-            "description": "Reads content of node_a and node_b; LLM picks exactly one relation_type_id from RelationTypes. Response data.suggestion: { relation_type_id, explanation }."
+            "description": "parent_id/child_id + type_of_parent/type_of_child: node | workspace | file. Loads text per type (file = metadata only). LLM picks one relation_type_id from RelationTypes for parent→child. Response data.suggestion: { relation_type_id, explanation }. Set collection vars parent_id, child_id (or paste UUIDs)."
           }
         }
       ]
