@@ -405,6 +405,11 @@ async def chat_with_agent(
     """
     try:
         attach = request.attach or AttachRequest()
+        if (request.use_rag or False) and (not attach.nodes) and request.workspace_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="workspace_id is required when use_rag=true (unless attach.nodes is provided)",
+            )
         chat_service = ChatService(db)
         
         response = chat_service.process_user_message(
@@ -415,6 +420,7 @@ async def chat_with_agent(
             llm_provider=request.llm_provider,
             use_rag=request.use_rag or False,
             workspace_id=request.workspace_id,
+            citation_ref_unique=request.citation_ref_unique or False,
             attach={
                 "nodes": attach.nodes,
                 "files": attach.files,

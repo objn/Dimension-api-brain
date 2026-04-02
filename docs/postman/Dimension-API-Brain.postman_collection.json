@@ -171,10 +171,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"citation_ref_unique\": true,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
             },
             "url": "{{base_url}}/conversations/chat",
-            "description": "use_rag: search node_vector; attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden.\n\nImages:\n- Attach images via `attach.files` (UUIDs of uploaded Files).\n- If the file's mime_type starts with image/, the image is sent to the vision-capable LLM directly (multimodal) instead of being parsed as text.\n\nResponse fields:\n- citations: sources (nodes/files/conversations) used.\n- attachments: full details of attached nodes/files/conversations (ids, names, topics) echoed back for UI."
+            "description": "use_rag: search node_vector (scoped to workspace_id when provided); attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden.\n\ncitation_ref_unique:\n- When true (and use_rag=true): merge multiple chunks with the same node_id into one citation.\n- In that mode, `chunk_id` and `chunk_index` are arrays.\n\nImages:\n- Attach images via `attach.files` (UUIDs of uploaded Files).\n- If the file's mime_type starts with image/, the image is sent to the vision-capable LLM directly (multimodal) instead of being parsed as text.\n\nResponse fields:\n- citations: sources (nodes/files/conversations) used.\n- attachments: full details of attached nodes/files/conversations (ids, names, topics) echoed back for UI."
           }
         },
         {
