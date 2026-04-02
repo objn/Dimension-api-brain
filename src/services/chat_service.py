@@ -8,14 +8,15 @@ This service handles the multi-role conversation flow:
 - Context management with recent message filtering
 """
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, DefaultDict, Tuple
+from collections import defaultdict
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from src.database.models import Messages, Conversations, Agents, Nodes, Files
+from src.database.models import Messages, Conversations, Agents, Nodes, Files, Workspaces
 from src.repositories.conversation_repository import ConversationRepository, MessageRepository
 from src.repositories.agent_repository import AgentRepository
 from src.repositories.node_repository import NodeRepository
@@ -60,6 +61,14 @@ class ChatService:
         self.agent_repo = AgentRepository(db)
         self.node_repo = NodeRepository(db)
         self.file_repo = FileRepository(db)
+
+    def _check_workspace_ownership(self, workspace_id: UUID, user_id: UUID) -> Workspaces:
+        row = self.db.query(Workspaces).filter(Workspaces.workspace_id == workspace_id).first()
+        if not row:
+            raise ValueError(f"Workspace {workspace_id} not found")
+        if row.created_by != user_id:
+            raise PermissionError("You don't have permission to use this workspace")
+        return row
 
     def _public_agent_profile_image_url(self, file_id: UUID) -> str:
         base = (settings.backend_server or "").rstrip("/")
@@ -154,6 +163,7 @@ class ChatService:
         llm_provider: LLMProviderType = "openai",
         use_rag: bool = False,
         workspace_id: Optional[UUID] = None,
+        citation_ref_unique: bool = False,
         attach: Optional[Dict[str, Any]] = None,
         max_reasoning_loops: int = 1,
         rag_top_k: Optional[int] = None,
@@ -208,9 +218,11 @@ class ChatService:
         if attach_nodes:
             scope_node_ids = attach_nodes
         elif use_rag and workspace_id:
-            scope_node_ids = self.node_repo.find_node_ids_by_workspace(workspace_id)
+            # Enforce workspace ownership; then scope to nodes inside that workspace for this user.
+            self._check_workspace_ownership(workspace_id, user_id)
+            scope_node_ids = self.node_repo.find_node_ids_by_workspace_for_user(workspace_id, user_id)
             if not scope_node_ids:
-                scope_node_ids = None  # search unscoped if workspace has no nodes
+                scope_node_ids = []  # explicit empty scope => RAG returns empty (no unscoped fallback)
         
         # Collect attachments per type for structured reference context
         citations: List[Dict[str, Any]] = []
@@ -233,6 +245,8 @@ class ChatService:
             if not file_entity:
                 logger.warning("Attach file %s: not found in database, skipping", file_id)
                 continue
+            if file_entity.created_by != user_id:
+                raise PermissionError("You don't have permission to attach this file")
 
             fname = file_entity.file_name or "file"
             file_detail = {
@@ -289,6 +303,8 @@ class ChatService:
             if not node:
                 logger.warning("Attach node %s: not found in database, skipping", nid)
                 continue
+            if node.created_by != user_id:
+                raise PermissionError("You don't have permission to attach this node")
 
             nname = node.node_name or str(nid)
             node_attachments.append({
@@ -378,24 +394,62 @@ class ChatService:
                 if rag_node_ids:
                     for n in self.node_repo.find_by_ids(rag_node_ids):
                         nodes_by_id[n.node_id] = n
-                for r in search_results:
-                    node_entity = nodes_by_id.get(r.node_id)
-                    rname = (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id)
-                    rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
-                    citations.append({
-                        "index": index,
-                        "source_type": "node",
-                        "node": {
-                            "node_id": str(r.node_id),
-                            "node_name": rname,
-                            "node_desc": (node_entity.node_desc or "") if node_entity else "",
-                        },
-                        "chunk_id": str(r.chunk_id),
-                        "chunk_index": r.node_vector_chunk_order,
-                        "snippet": (r.node_content_md_chunk[:200] + "…") if len(r.node_content_md_chunk) > 200 else r.node_content_md_chunk,
-                        "similarity": r.similarity,
-                    })
-                    index += 1
+                if citation_ref_unique:
+                    grouped: DefaultDict[UUID, List[Any]] = defaultdict(list)
+                    for r in search_results:
+                        grouped[r.node_id].append(r)
+                    # Sort nodes by their best similarity so ordering remains "most relevant first"
+                    node_rank: List[Tuple[UUID, float]] = []
+                    for nid, items in grouped.items():
+                        best_sim = max((it.similarity for it in items), default=0.0)
+                        node_rank.append((nid, best_sim))
+                    node_rank.sort(key=lambda x: -x[1])
+
+                    for nid, _best_sim in node_rank:
+                        items = sorted(grouped[nid], key=lambda it: -it.similarity)
+                        node_entity = nodes_by_id.get(nid)
+                        rname = (node_entity.node_name or str(nid)) if node_entity else str(nid)
+                        combined_text = "\n\n---\n\n".join(it.node_content_md_chunk for it in items if it.node_content_md_chunk)
+                        rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{combined_text}")
+
+                        chunk_ids = [str(it.chunk_id) for it in items]
+                        chunk_orders = [it.node_vector_chunk_order for it in items]
+                        top = items[0]
+                        combined_snippet = (combined_text[:200] + "…") if len(combined_text) > 200 else combined_text
+                        citations.append({
+                            "index": index,
+                            "source_type": "node",
+                            "node": {
+                                "node_id": str(nid),
+                                "node_name": rname,
+                                "node_desc": (node_entity.node_desc or "") if node_entity else "",
+                            },
+                            # When unique: keep same keys but return arrays (even if only 1)
+                            "chunk_id": chunk_ids,
+                            "chunk_index": chunk_orders,
+                            "snippet": combined_snippet,
+                            "similarity": top.similarity,
+                        })
+                        index += 1
+                else:
+                    for r in search_results:
+                        node_entity = nodes_by_id.get(r.node_id)
+                        rname = (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id)
+                        rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
+                        citations.append({
+                            "index": index,
+                            "source_type": "node",
+                            "node": {
+                                "node_id": str(r.node_id),
+                                "node_name": rname,
+                                "node_desc": (node_entity.node_desc or "") if node_entity else "",
+                            },
+                            "chunk_id": str(r.chunk_id),
+                            "chunk_index": r.node_vector_chunk_order,
+                            "snippet": (r.node_content_md_chunk[:200] + "…") if len(r.node_content_md_chunk) > 200 else r.node_content_md_chunk,
+                            "similarity": r.similarity,
+                        })
+                        index += 1
 
         # ── Save attachments to USER message metadatas ──────────────────
         attachments: Dict[str, Any] = {

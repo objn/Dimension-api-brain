@@ -35,3 +35,18 @@ class NodeRepository(BaseRepository[Nodes]):
             .all()
         )
         return [r[0] for r in rows if r[0]]
+
+    def find_node_ids_by_workspace_for_user(self, workspace_id: UUID, user_id: UUID) -> List[UUID]:
+        """
+        Find node IDs in a workspace that belong to the given user.
+        This is used to enforce workspace/tenant scoping for RAG.
+        """
+        rows = (
+            self.db.query(Relations.child_id)
+            .filter(Relations.parent_id == workspace_id)
+            .join(Nodes, Relations.child_id == Nodes.node_id)
+            .filter(Nodes.created_by == user_id)
+            .distinct()
+            .all()
+        )
+        return [r[0] for r in rows if r[0]]

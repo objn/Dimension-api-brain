@@ -50,8 +50,9 @@ class SemanticSearchService:
         scope_node_ids: Optional[List[UUID]],
     ) -> List[RAGSearchResult]:
         """Run one similarity search with a precomputed query embedding. Used internally."""
+        # Important: an explicit empty scope means "search nothing" (do NOT fall back to unscoped search).
         if scope_node_ids is not None and len(scope_node_ids) == 0:
-            scope_node_ids = None
+            return []
         distance_col = Nodevector.embedding.cosine_distance(query_embedding)
         q = (
             select(
@@ -112,6 +113,11 @@ class SemanticSearchService:
             return []
 
         query_stripped = query_text.strip()
+
+        # Important: an explicit empty scope means "search nothing" (do NOT fall back to unscoped search).
+        if scope_node_ids is not None and len(scope_node_ids) == 0:
+            return []
+
         # Build query variants: original + optional translated (for cross-lingual)
         query_variants: List[str] = [query_stripped]
         if settings.rag_cross_lingual_enabled:
@@ -130,9 +136,6 @@ class SemanticSearchService:
                     logger.debug("Cross-lingual: query translation returned nothing, using single query")
                 else:
                     logger.debug("Cross-lingual: translated same as original, using single query")
-
-        if scope_node_ids is not None and len(scope_node_ids) == 0:
-            scope_node_ids = None
 
         # Fetch more per variant so after merge we have enough for top `limit`
         per_query_limit = limit * 2 if len(query_variants) > 1 else limit * 3
