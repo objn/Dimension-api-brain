@@ -54,6 +54,13 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
 
     normalized: List[Dict[str, Any]] = []
 
+    def _first_present(d: Dict[str, Any], keys: List[str]) -> Any:
+        """Return the first key that exists in dict (even if value is 0/False)."""
+        for k in keys:
+            if k in d:
+                return d.get(k)
+        return None
+
     for item in raw:
         if not isinstance(item, dict):
             continue
@@ -61,15 +68,15 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
         node_obj = item.get("node") if isinstance(item.get("node"), dict) else {}
         node_id = _to_str_uuid(item.get("node_id")) or _to_str_uuid(node_obj.get("node_id"))
         node_name = item.get("node_name") or node_obj.get("node_name")
-        similarity_score_percent = _similarity_to_percent(item.get("similarity") or item.get("similarity_score"))
+        similarity_score_percent = _similarity_to_percent(
+            _first_present(item, ["similarity_score", "similarity"])
+        )
 
         # chunk_id may be a string or an array (citation_ref_unique=true case)
-        chunk_id_raw = item.get("chunk_id") or item.get("chunk_ids")
-        chunk_order_raw = (
-            item.get("chunk_order")
-            or item.get("chunk_index")
-            or item.get("node_vector_chunk_order")
-            or item.get("chunk_orders")
+        chunk_id_raw = _first_present(item, ["chunk_id", "chunk_ids"])
+        chunk_order_raw = _first_present(
+            item,
+            ["chunk_order", "chunk_index", "node_vector_chunk_order", "chunk_orders"],
         )
 
         # Only normalize node-vector citations (must have node_id and chunk identifiers)
