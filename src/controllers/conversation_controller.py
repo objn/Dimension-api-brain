@@ -48,6 +48,7 @@ from src.dto.conversation_dto import (
 from src.dto.response_dto import success_response, error_response
 from src.utils.auth import get_current_user_id
 from src.services.chat_service import ChatService
+from src.utils.citation_normalizer import normalize_citations_in_metadatas
 
 import src.services.llm_router as LLM
 
@@ -172,7 +173,8 @@ async def get_conversation_by_id(
                                 agent_entity.agent_profile_image
                             )
 
-                        msg_resp = msg_resp.model_copy(update={"metadatas": md})
+                md = normalize_citations_in_metadatas(md)
+                msg_resp = msg_resp.model_copy(update={"metadatas": md})
 
             message_responses.append(msg_resp)
 
@@ -430,7 +432,17 @@ async def chat_with_agent(
             rag_top_k=request.rag_top_k,
         )
         
-        return success_response(response.model_dump())
+        payload = response.model_dump()
+        try:
+            agent_resp = payload.get("agent_response") or {}
+            if isinstance(agent_resp, dict):
+                agent_md = normalize_citations_in_metadatas(agent_resp.get("metadatas"))
+                agent_resp["metadatas"] = agent_md
+                payload["agent_response"] = agent_resp
+        except Exception:
+            # Best-effort normalization only; never fail the chat response
+            pass
+        return success_response(payload)
     
     except PermissionError as e:
         raise HTTPException(
