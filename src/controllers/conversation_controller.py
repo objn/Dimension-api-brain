@@ -422,7 +422,6 @@ async def chat_with_agent(
             llm_provider=request.llm_provider,
             use_rag=request.use_rag or False,
             workspace_id=request.workspace_id,
-            citation_ref_unique=request.citation_ref_unique or False,
             attach={
                 "nodes": attach.nodes,
                 "files": attach.files,

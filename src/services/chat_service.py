@@ -8,8 +8,7 @@ This service handles the multi-role conversation flow:
 - Context management with recent message filtering
 """
 import logging
-from typing import List, Optional, Dict, Any, DefaultDict, Tuple
-from collections import defaultdict
+from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -163,7 +162,6 @@ class ChatService:
         llm_provider: LLMProviderType = "openai",
         use_rag: bool = False,
         workspace_id: Optional[UUID] = None,
-        citation_ref_unique: bool = False,
         attach: Optional[Dict[str, Any]] = None,
         max_reasoning_loops: int = 1,
         rag_top_k: Optional[int] = None,
@@ -226,7 +224,6 @@ class ChatService:
         
         # Collect attachments per type for structured reference context
         citations: List[Dict[str, Any]] = []
-        index = 1
         attached_images: List[bytes] = []
         image_names: List[str] = []
         node_parts: List[str] = []
@@ -266,13 +263,6 @@ class ChatService:
                     if img_bytes:
                         attached_images.append(img_bytes)
                         image_names.append(fname)
-                        citations.append({
-                            "index": index,
-                            "source_type": "file",
-                            "file": file_detail,
-                            "snippet": f"[Image: {fname}]",
-                        })
-                        index += 1
                         logger.info("Attach file %s: image loaded (%d bytes)", file_id, len(img_bytes))
                     continue
 
@@ -283,14 +273,7 @@ class ChatService:
                 )
                 if text and text.strip():
                     snippet = text.strip()[:300] + "…" if len(text.strip()) > 300 else text.strip()
-                    file_parts.append(f"[{index}] File: \"{fname}\" (type: {file_entity.mime_type or 'unknown'})\n{text.strip()}")
-                    citations.append({
-                        "index": index,
-                        "source_type": "file",
-                        "file": file_detail,
-                        "snippet": snippet,
-                    })
-                    index += 1
+                    file_parts.append(f"File: \"{fname}\" (type: {file_entity.mime_type or 'unknown'})\n{text.strip()}")
                     logger.info("Attach file %s: text extracted (%d chars)", file_id, len(text.strip()))
                 else:
                     logger.warning("Attach file %s: parse_document returned empty text", file_id)
@@ -318,18 +301,7 @@ class ChatService:
                 continue
             ndesc = f" – {node.node_desc}" if node.node_desc else ""
             snippet = (node.node_content_md.strip()[:300] + "…") if len(node.node_content_md.strip()) > 300 else node.node_content_md.strip()
-            node_parts.append(f"[{index}] Node: \"{nname}\"{ndesc}\n{node.node_content_md.strip()}")
-            citations.append({
-                "index": index,
-                "source_type": "node",
-                "node": {
-                    "node_id": str(node.node_id),
-                    "node_name": nname,
-                    "node_desc": node.node_desc or "",
-                },
-                "snippet": snippet,
-            })
-            index += 1
+            node_parts.append(f"Node: \"{nname}\"{ndesc}\n{node.node_content_md.strip()}")
 
         # ── Attached conversations ──────────────────────────────────────
         for cid in attach_conversations:
@@ -367,17 +339,7 @@ class ChatService:
             snippet = convo_text[:300] + "…" if len(convo_text) > 300 else convo_text
             title = convo.conversation_topic or str(cid)
 
-            convo_parts.append(f"[{index}] Conversation: \"{title}\"\n{convo_text}")
-            citations.append({
-                "index": index,
-                "source_type": "conversation",
-                "conversation": {
-                    "conversation_id": str(convo.conversation_id),
-                    "conversation_topic": convo.conversation_topic or "",
-                },
-                "snippet": snippet,
-            })
-            index += 1
+            convo_parts.append(f"Conversation: \"{title}\"\n{convo_text}")
 
         # ── RAG search (similarity) ────────────────────────────────────
         if use_rag:
@@ -394,62 +356,19 @@ class ChatService:
                 if rag_node_ids:
                     for n in self.node_repo.find_by_ids(rag_node_ids):
                         nodes_by_id[n.node_id] = n
-                if citation_ref_unique:
-                    grouped: DefaultDict[UUID, List[Any]] = defaultdict(list)
-                    for r in search_results:
-                        grouped[r.node_id].append(r)
-                    # Sort nodes by their best similarity so ordering remains "most relevant first"
-                    node_rank: List[Tuple[UUID, float]] = []
-                    for nid, items in grouped.items():
-                        best_sim = max((it.similarity for it in items), default=0.0)
-                        node_rank.append((nid, best_sim))
-                    node_rank.sort(key=lambda x: -x[1])
-
-                    for nid, _best_sim in node_rank:
-                        items = sorted(grouped[nid], key=lambda it: -it.similarity)
-                        node_entity = nodes_by_id.get(nid)
-                        rname = (node_entity.node_name or str(nid)) if node_entity else str(nid)
-                        combined_text = "\n\n---\n\n".join(it.node_content_md_chunk for it in items if it.node_content_md_chunk)
-                        rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{combined_text}")
-
-                        chunk_ids = [str(it.chunk_id) for it in items]
-                        chunk_orders = [it.node_vector_chunk_order for it in items]
-                        top = items[0]
-                        combined_snippet = (combined_text[:200] + "…") if len(combined_text) > 200 else combined_text
-                        citations.append({
-                            "index": index,
-                            "source_type": "node",
-                            "node": {
-                                "node_id": str(nid),
-                                "node_name": rname,
-                                "node_desc": (node_entity.node_desc or "") if node_entity else "",
-                            },
-                            # When unique: keep same keys but return arrays (even if only 1)
-                            "chunk_id": chunk_ids,
-                            "chunk_index": chunk_orders,
-                            "snippet": combined_snippet,
-                            "similarity": top.similarity,
-                        })
-                        index += 1
-                else:
-                    for r in search_results:
-                        node_entity = nodes_by_id.get(r.node_id)
-                        rname = (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id)
-                        rag_parts.append(f"[{index}] Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
-                        citations.append({
-                            "index": index,
-                            "source_type": "node",
-                            "node": {
-                                "node_id": str(r.node_id),
-                                "node_name": rname,
-                                "node_desc": (node_entity.node_desc or "") if node_entity else "",
-                            },
+                for r in search_results:
+                    node_entity = nodes_by_id.get(r.node_id)
+                    rname = (node_entity.node_name or str(r.node_id)) if node_entity else str(r.node_id)
+                    rag_parts.append(f"Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
+                    citations.append(
+                        {
+                            "node_id": str(r.node_id),
+                            "node_name": rname,
                             "chunk_id": str(r.chunk_id),
-                            "chunk_index": r.node_vector_chunk_order,
-                            "snippet": (r.node_content_md_chunk[:200] + "…") if len(r.node_content_md_chunk) > 200 else r.node_content_md_chunk,
+                            "chunk_order": r.node_vector_chunk_order,
                             "similarity": r.similarity,
-                        })
-                        index += 1
+                        }
+                    )
 
         # ── Save attachments to USER message metadatas ──────────────────
         attachments: Dict[str, Any] = {

@@ -17,6 +17,7 @@
     { "key": "agent_id", "value": "" },
     { "key": "file_id", "value": "" },
     { "key": "node_id", "value": "" },
+    { "key": "chunk_id", "value": "" },
     { "key": "job_id", "value": "" },
     { "key": "metadata_id", "value": "" },
     { "key": "entity_id", "value": "" },
@@ -171,10 +172,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"citation_ref_unique\": true,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
+              "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"What is machine learning?\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"llm_provider\": \"openai\",\n  \"use_rag\": false,\n  \"workspace_id\": null,\n  \"attach\": {\n    \"nodes\": [],\n    \"files\": [],\n    \"conversations\": []\n  },\n  \"max_reasoning_loops\": 1,\n  \"rag_top_k\": 5\n}"
             },
             "url": "{{base_url}}/conversations/chat",
-            "description": "use_rag: search node_vector (scoped to workspace_id when provided); attach: nodes/files/conversations for citations and extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden.\n\ncitation_ref_unique:\n- When true (and use_rag=true): merge multiple chunks with the same node_id into one citation.\n- In that mode, `chunk_id` and `chunk_index` are arrays.\n\nImages:\n- Attach images via `attach.files` (UUIDs of uploaded Files).\n- If the file's mime_type starts with image/, the image is sent to the vision-capable LLM directly (multimodal) instead of being parsed as text.\n\nResponse fields:\n- citations: sources (nodes/files/conversations) used.\n- attachments: full details of attached nodes/files/conversations (ids, names, topics) echoed back for UI."
+            "description": "use_rag: search node_vector (scoped to workspace_id when provided); attach: nodes/files/conversations for extra context; max_reasoning_loops: 2+ for step-by-step reasoning. Agent default_llm_provider used when llm_provider not overridden.\n\nImages:\n- Attach images via `attach.files` (UUIDs of uploaded Files).\n- If the file's mime_type starts with image/, the image is sent to the vision-capable LLM directly (multimodal) instead of being parsed as text.\n\nCitations:\n- When use_rag=true, response includes `agent_response.metadatas.citations` trimmed to:\n  [{ node_id, node_name, chunk_id, chunk_order, similarity_score_percent }]\n- Other metadata may still exist in metadatas but citations are normalized for API response."
           }
         },
         {
@@ -229,6 +230,28 @@
               "raw": "{\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message_content\": \"System notice or error text\",\n  \"is_error\": false\n}"
             },
             "url": "{{base_url}}/conversations/chat/system"
+          }
+        }
+      ]
+    },
+    {
+      "name": "NodeVector",
+      "item": [
+        {
+          "name": "Get NodeVector chunk by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nodevector/getbyid?node_id={{node_id}}&chunk_id={{chunk_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["nodevector", "getbyid"],
+              "query": [
+                { "key": "node_id", "value": "{{node_id}}" },
+                { "key": "chunk_id", "value": "{{chunk_id}}", "description": "node_vector_chunk_id" }
+              ]
+            },
+            "description": "Fetch a single NodeVector row by composite key (node_id + chunk_id). Returns 404 if not found/soft-deleted, 403 if not owned."
           }
         }
       ]

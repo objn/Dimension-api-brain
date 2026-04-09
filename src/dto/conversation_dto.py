@@ -293,13 +293,6 @@ class ChatRequest(BaseModel):
         le=20,
         description="When use_rag is true: number of top chunks by similarity to retrieve from node_vector (default 5)"
     )
-    citation_ref_unique: Optional[bool] = Field(
-        default=False,
-        description=(
-            "When use_rag is true and citation_ref_unique is true: merge RAG citations by node_id "
-            "(chunk_id and node_vector_chunk_order become arrays)."
-        ),
-    )
 
     class Config:
         json_schema_extra = {
@@ -317,7 +310,6 @@ class ChatRequest(BaseModel):
                 },
                 "max_reasoning_loops": 1,
                 "rag_top_k": 5,
-                "citation_ref_unique": False
             }
         }
 
