@@ -16,6 +16,7 @@ from src.controllers import (
     llm_router,
     search_router,
     nodevector_router,
+    filevector_router,
 )
 
 
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(llm_router)
     app.include_router(search_router)
     app.include_router(nodevector_router)
+    app.include_router(filevector_router)
 
     # Root endpoint
     @app.get("/", status_code=status.HTTP_200_OK)

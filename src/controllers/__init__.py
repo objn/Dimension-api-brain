@@ -9,6 +9,7 @@ from .document_controller import router as document_router
 from .llm_controller import router as llm_router
 from .search_controller import router as search_router
 from .nodevector_controller import router as nodevector_router
+from .filevector_controller import router as filevector_router
 
 __all__ = [
     "agent_router",
@@ -22,4 +23,5 @@ __all__ = [
     "llm_router",
     "search_router",
     "nodevector_router",
+    "filevector_router",
 ]

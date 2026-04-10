@@ -18,6 +18,7 @@
     { "key": "file_id", "value": "" },
     { "key": "node_id", "value": "" },
     { "key": "chunk_id", "value": "" },
+    { "key": "file_chunk_id", "value": "" },
     { "key": "job_id", "value": "" },
     { "key": "metadata_id", "value": "" },
     { "key": "entity_id", "value": "" },
@@ -252,6 +253,28 @@
               ]
             },
             "description": "Fetch a single NodeVector row by composite key (node_id + chunk_id). Returns 404 if not found/soft-deleted, 403 if not owned."
+          }
+        }
+      ]
+    },
+    {
+      "name": "FileVector",
+      "item": [
+        {
+          "name": "Get FileVector chunk by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/filevector/getbyid?conversation_id={{conversation_id}}&chunk_id={{file_chunk_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["filevector", "getbyid"],
+              "query": [
+                { "key": "conversation_id", "value": "{{conversation_id}}" },
+                { "key": "chunk_id", "value": "{{file_chunk_id}}", "description": "file_vector_chunk_id (from chat citation chunk_id for file_document)" }
+              ]
+            },
+            "description": "Fetch a single FileVector row by composite key (conversation_id + file_vector_chunk_id). Same idea as NodeVector/getbyid but for conversation-scoped document chunks. Set collection vars conversation_id and file_chunk_id (use chunk_id from a file_document citation). Returns 404 if not found/soft-deleted, 403 if not owned."
           }
         }
       ]

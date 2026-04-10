@@ -14,6 +14,18 @@ class FileVectorRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def find_one_by_composite_id(
+        self, conversation_id: UUID, chunk_id: UUID
+    ) -> Optional[Filevector]:
+        """Single chunk row by (conversation_id, file_vector_chunk_id)."""
+        return (
+            self.db.query(Filevector)
+            .filter(Filevector.conversation_id == conversation_id)
+            .filter(Filevector.file_vector_chunk_id == chunk_id)
+            .filter(Filevector.deleted_at.is_(None))
+            .first()
+        )
+
     def soft_delete_by_conversation_and_file(
         self,
         conversation_id: UUID,
