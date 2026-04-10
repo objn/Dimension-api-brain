@@ -157,6 +157,27 @@ class Nodevector(Base):
     Users_2 = relationship("Users", foreign_keys=[updated_by])
 
 
+class Filevector(Base):
+    """Model for FileVector table (conversation-scoped file chunks; soft UUID refs for conversation/file)."""
+    __tablename__ = "FileVector"
+
+    conversation_id = Column(UUID(as_uuid=True), primary_key=True)
+    file_vector_chunk_id = Column(UUID(as_uuid=True), primary_key=True)
+    file_id = Column(UUID(as_uuid=True), nullable=False)
+    file_content_text_chunk = Column(Text)
+    file_content_chunk_hash = Column(String(255))
+    embedding = Column(Vector(1536))
+    file_vector_chunk_order = Column(Integer)
+    created_at = Column(DateTime)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("Users.user_id"))
+    updated_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("Users.user_id"))
+    deleted_at = Column(DateTime)
+
+    Users = relationship("Users", foreign_keys=[created_by])
+    Users_2 = relationship("Users", foreign_keys=[updated_by])
+
+
 class Nodes(Base):
     """Model for Nodes table"""
     __tablename__ = "Nodes"

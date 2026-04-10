@@ -4,13 +4,34 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from src.config.settings import settings
-from typing import List, Optional, Literal, Union
+from typing import List, Optional, Literal, Union, Any
 import httpx
 import base64
 import io
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _stream_content_to_text(llm: BaseChatModel, messages: List[Any]) -> str:
+    """
+    Consume LangChain chat model stream (OpenAI SSE under the hood) and concatenate text.
+    """
+    parts: List[str] = []
+    for chunk in llm.stream(messages):
+        c = getattr(chunk, "content", None)
+        if not c:
+            continue
+        if isinstance(c, str):
+            parts.append(c)
+        elif isinstance(c, list):
+            for block in c:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict):
+                    if block.get("type") == "text":
+                        parts.append(block.get("text") or "")
+    return "".join(parts).strip()
 
 
 # Type alias for LLM providers
@@ -212,8 +233,10 @@ def chat_with_history(
 
     messages.append(HumanMessage(content=user_message))
 
+    if provider == "openai":
+        return _stream_content_to_text(llm, messages)
     response = llm.invoke(messages)
-    return response.content.strip()
+    return (response.content or "").strip()
 
 
 def chat_with_history_and_images(
@@ -310,6 +333,11 @@ def chat_with_history_and_images(
 
     llm = _get_llm(provider, timeout=timeout)
     message = HumanMessage(content=content_parts)
+    if provider == "openai":
+        try:
+            return _stream_content_to_text(llm, [message])
+        except Exception as e:
+            logger.warning("OpenAI streaming failed for multimodal chat, falling back to invoke: %s", e)
     response = llm.invoke([message])
     return (response.content or "").strip()
 

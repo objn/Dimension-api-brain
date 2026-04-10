@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from src.database.models import Messages, Conversations, Agents, Nodes, Files, Workspaces
+from src.database.models import Messages, Conversations, Agents, Nodes, Workspaces
 from src.repositories.conversation_repository import ConversationRepository, MessageRepository
 from src.repositories.agent_repository import AgentRepository
 from src.repositories.node_repository import NodeRepository
@@ -32,6 +32,8 @@ from src.dto.conversation_dto import (
     LLMProviderType
 )
 from src.services.rag import semantic_search_service
+from src.services.rag.file_semantic_search_service import file_semantic_search_service
+from src.services.rag.file_vector_embed_service import upsert_file_chunks_for_conversation
 from src.services.document_parse_service import parse_document
 import src.services.llm_router as LLM
 
@@ -230,6 +232,9 @@ class ChatService:
         file_parts: List[str] = []
         convo_parts: List[str] = []
         rag_parts: List[str] = []
+        file_rag_parts: List[str] = []
+        document_file_ids_for_rag: List[UUID] = []
+        file_id_to_name: Dict[UUID, str] = {}
 
         # Collect attachment details for USER message metadatas (built inline)
         node_attachments: List[Dict[str, Any]] = []
@@ -246,6 +251,7 @@ class ChatService:
                 raise PermissionError("You don't have permission to attach this file")
 
             fname = file_entity.file_name or "file"
+            file_id_to_name[file_id] = fname
             file_detail = {
                 "file_id": str(file_entity.file_id),
                 "file_name": fname,
@@ -257,28 +263,96 @@ class ChatService:
             try:
                 mime = (file_entity.mime_type or "").lower()
 
-                if mime.startswith("image/") and file_entity.file_path:
-                    with open(file_entity.file_path, "rb") as f:
-                        img_bytes = f.read()
-                    if img_bytes:
-                        attached_images.append(img_bytes)
-                        image_names.append(fname)
-                        logger.info("Attach file %s: image loaded (%d bytes)", file_id, len(img_bytes))
+                if mime.startswith("image/"):
+                    citations.append(
+                        {
+                            "source_type": "file_image",
+                            "file_id": str(file_entity.file_id),
+                            "file_name": fname,
+                            "mime_type": file_entity.mime_type or "",
+                            "file_size": file_entity.file_size,
+                        }
+                    )
+                    if file_entity.file_path:
+                        with open(file_entity.file_path, "rb") as f:
+                            img_bytes = f.read()
+                        if img_bytes:
+                            attached_images.append(img_bytes)
+                            image_names.append(fname)
+                            logger.info("Attach file %s: image loaded (%d bytes)", file_id, len(img_bytes))
                     continue
 
-                text = parse_document(
-                    file_entity.file_path,
-                    mime_type=file_entity.mime_type,
-                    filename=file_entity.file_name,
-                )
+                try:
+                    text = parse_document(
+                        file_entity.file_path,
+                        mime_type=file_entity.mime_type,
+                        filename=file_entity.file_name,
+                    )
+                except Exception as parse_err:
+                    logger.warning("Attach file %s: parse failed – %s", file_id, parse_err)
+                    citations.append(
+                        {
+                            "source_type": "file_unsupported",
+                            "file_id": str(file_entity.file_id),
+                            "file_name": fname,
+                            "mime_type": file_entity.mime_type or "",
+                            "file_size": file_entity.file_size,
+                        }
+                    )
+                    continue
+
                 if text and text.strip():
-                    snippet = text.strip()[:300] + "…" if len(text.strip()) > 300 else text.strip()
-                    file_parts.append(f"File: \"{fname}\" (type: {file_entity.mime_type or 'unknown'})\n{text.strip()}")
+                    file_parts.append(
+                        f"File: \"{fname}\" (type: {file_entity.mime_type or 'unknown'})\n{text.strip()}"
+                    )
                     logger.info("Attach file %s: text extracted (%d chars)", file_id, len(text.strip()))
+                    try:
+                        upsert_file_chunks_for_conversation(
+                            self.db,
+                            conversation_id=conversation_id,
+                            file_id=file_id,
+                            user_id=user_id,
+                            text=text,
+                        )
+                        document_file_ids_for_rag.append(file_id)
+                    except Exception as embed_err:
+                        logger.error(
+                            "Attach file %s: FileVector embed failed – %s",
+                            file_id,
+                            embed_err,
+                            exc_info=True,
+                        )
+                        citations.append(
+                            {
+                                "source_type": "file_unsupported",
+                                "file_id": str(file_entity.file_id),
+                                "file_name": fname,
+                                "mime_type": file_entity.mime_type or "",
+                                "file_size": file_entity.file_size,
+                            }
+                        )
                 else:
                     logger.warning("Attach file %s: parse_document returned empty text", file_id)
+                    citations.append(
+                        {
+                            "source_type": "file_unsupported",
+                            "file_id": str(file_entity.file_id),
+                            "file_name": fname,
+                            "mime_type": file_entity.mime_type or "",
+                            "file_size": file_entity.file_size,
+                        }
+                    )
             except Exception as e:
                 logger.error("Attach file %s: failed to process – %s", file_id, e, exc_info=True)
+                citations.append(
+                    {
+                        "source_type": "file_unsupported",
+                        "file_id": str(file_entity.file_id),
+                        "file_name": fname,
+                        "mime_type": file_entity.mime_type or "",
+                        "file_size": file_entity.file_size,
+                    }
+                )
 
         # ── Attached nodes ──────────────────────────────────────────────
         for nid in attach_nodes:
@@ -362,6 +436,7 @@ class ChatService:
                     rag_parts.append(f"Related knowledge from \"{rname}\":\n{r.node_content_md_chunk}")
                     citations.append(
                         {
+                            "source_type": "node",
                             "node_id": str(r.node_id),
                             "node_name": rname,
                             "chunk_id": str(r.chunk_id),
@@ -369,6 +444,32 @@ class ChatService:
                             "similarity": r.similarity,
                         }
                     )
+
+        if document_file_ids_for_rag:
+            try:
+                file_search_results = file_semantic_search_service.search(
+                    db=self.db,
+                    query_text=user_message,
+                    conversation_id=conversation_id,
+                    limit=k_chunks,
+                    min_similarity=RAG_MIN_SIMILARITY_CHAT,
+                    scope_file_ids=document_file_ids_for_rag,
+                )
+                for fr in file_search_results:
+                    fn = file_id_to_name.get(fr.file_id) or str(fr.file_id)
+                    file_rag_parts.append(f"From attached file \"{fn}\":\n{fr.file_content_text_chunk}")
+                    citations.append(
+                        {
+                            "source_type": "file_document",
+                            "file_id": str(fr.file_id),
+                            "file_name": fn,
+                            "chunk_id": str(fr.chunk_id),
+                            "chunk_order": fr.file_vector_chunk_order,
+                            "similarity": fr.similarity,
+                        }
+                    )
+            except Exception as e:
+                logger.error("FileVector semantic search failed: %s", e, exc_info=True)
 
         # ── Save attachments to USER message metadatas ──────────────────
         attachments: Dict[str, Any] = {
@@ -396,6 +497,11 @@ class ChatService:
             ref_sections.append("ATTACHED CONVERSATIONS (previous chat history):\n" + "\n\n".join(convo_parts))
         if rag_parts:
             ref_sections.append("RELATED KNOWLEDGE (retrieved by similarity search):\n" + "\n\n".join(rag_parts))
+        if file_rag_parts:
+            ref_sections.append(
+                "RELATED FILE CHUNKS (this conversation only, from attached documents):\n"
+                + "\n\n".join(file_rag_parts)
+            )
 
         reference_context: Optional[str] = None
         if ref_sections:
@@ -406,8 +512,13 @@ class ChatService:
                 + "\n\n---\n\n".join(ref_sections)
             )
             logger.info(
-                "Reference context built: images=%d, files=%d, nodes=%d, conversations=%d, rag=%d",
-                len(image_names), len(file_parts), len(node_parts), len(convo_parts), len(rag_parts),
+                "Reference context built: images=%d, files=%d, nodes=%d, conversations=%d, rag=%d, file_rag=%d",
+                len(image_names),
+                len(file_parts),
+                len(node_parts),
+                len(convo_parts),
+                len(rag_parts),
+                len(file_rag_parts),
             )
         
         # 4. Generate AGENT response (multimodal when images are attached)

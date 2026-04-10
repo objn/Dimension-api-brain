@@ -98,6 +98,17 @@ class RAGSearchResult:
     node_vector_chunk_order: Optional[int] = None
 
 
+@dataclass
+class FileRAGSearchResult:
+    """Single chunk result from conversation-scoped file vector search."""
+    conversation_id: UUID
+    file_id: UUID
+    chunk_id: UUID
+    file_content_text_chunk: str
+    similarity: float
+    file_vector_chunk_order: Optional[int] = None
+
+
 # ============================================================================
 # Constants
 # ============================================================================
