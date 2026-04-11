@@ -46,7 +46,7 @@ def _first_present(d: Dict[str, Any], keys: List[str]) -> Any:
 
 
 def _normalize_file_only_citation(item: Dict[str, Any], source_type: str) -> Dict[str, Any]:
-    """Image / unsupported: only Files-table-style fields (no chunk / similarity)."""
+    """``file_image`` or ``file``: only Files-table-style fields (no chunk / similarity)."""
     out: Dict[str, Any] = {"source_type": source_type}
     fid = _to_str_uuid(item.get("file_id"))
     if fid:
@@ -92,11 +92,12 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
     """
     Normalize metadatas.citations for API response only.
 
-    Polymorphic items (omit unused keys); every item includes ``source_type``:
+    Polymorphic items (omit unused keys); every item includes ``source_type`` (one of
+    ``node``, ``file``, ``file_document``, ``file_image``):
     - ``node``: node RAG — node_id, node_name, chunk_id, chunk_order, similarity_score_percent
     - ``file_document``: document file RAG — file_id, file_name, chunk_id, chunk_order, similarity_score_percent
     - ``file_image``: attached image — file_id, file_name, mime_type, file_size
-    - ``file_unsupported``: non-text / parse failed — file_id, file_name, mime_type, file_size
+    - ``file``: other attached file (non-image / parse failed) — file_id, file_name, mime_type, file_size
     """
     if not isinstance(metadatas, dict):
         return metadatas
@@ -113,8 +114,14 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
 
         source_type = item.get("source_type")
 
-        if source_type in ("file_image", "file_unsupported"):
-            norm = _normalize_file_only_citation(item, source_type)
+        if source_type == "file_image":
+            norm = _normalize_file_only_citation(item, "file_image")
+            if norm.get("file_id"):
+                normalized.append(norm)
+            continue
+        if source_type in ("file", "file_unsupported"):
+            # file_unsupported: legacy stored citations
+            norm = _normalize_file_only_citation(item, "file")
             if norm.get("file_id"):
                 normalized.append(norm)
             continue

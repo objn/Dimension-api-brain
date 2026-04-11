@@ -292,7 +292,7 @@ class ChatService:
                     logger.warning("Attach file %s: parse failed – %s", file_id, parse_err)
                     citations.append(
                         {
-                            "source_type": "file_unsupported",
+                            "source_type": "file",
                             "file_id": str(file_entity.file_id),
                             "file_name": fname,
                             "mime_type": file_entity.mime_type or "",
@@ -324,7 +324,7 @@ class ChatService:
                         )
                         citations.append(
                             {
-                                "source_type": "file_unsupported",
+                                "source_type": "file",
                                 "file_id": str(file_entity.file_id),
                                 "file_name": fname,
                                 "mime_type": file_entity.mime_type or "",
@@ -335,7 +335,7 @@ class ChatService:
                     logger.warning("Attach file %s: parse_document returned empty text", file_id)
                     citations.append(
                         {
-                            "source_type": "file_unsupported",
+                            "source_type": "file",
                             "file_id": str(file_entity.file_id),
                             "file_name": fname,
                             "mime_type": file_entity.mime_type or "",
@@ -346,7 +346,7 @@ class ChatService:
                 logger.error("Attach file %s: failed to process – %s", file_id, e, exc_info=True)
                 citations.append(
                     {
-                        "source_type": "file_unsupported",
+                        "source_type": "file",
                         "file_id": str(file_entity.file_id),
                         "file_name": fname,
                         "mime_type": file_entity.mime_type or "",
