@@ -45,9 +45,9 @@ def _first_present(d: Dict[str, Any], keys: List[str]) -> Any:
     return None
 
 
-def _normalize_file_only_citation(item: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_file_only_citation(item: Dict[str, Any], source_type: str) -> Dict[str, Any]:
     """Image / unsupported: only Files-table-style fields (no chunk / similarity)."""
-    out: Dict[str, Any] = {}
+    out: Dict[str, Any] = {"source_type": source_type}
     fid = _to_str_uuid(item.get("file_id"))
     if fid:
         out["file_id"] = fid
@@ -92,10 +92,11 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
     """
     Normalize metadatas.citations for API response only.
 
-    Polymorphic items (omit unused keys):
-    - Node RAG: node_id, node_name, chunk_id, chunk_order, similarity_score_percent
-    - Document file RAG: file_id, file_name, chunk_id, chunk_order, similarity_score_percent
-    - File-only (image / unsupported): file_id, file_name, mime_type, file_size
+    Polymorphic items (omit unused keys); every item includes ``source_type``:
+    - ``node``: node RAG — node_id, node_name, chunk_id, chunk_order, similarity_score_percent
+    - ``file_document``: document file RAG — file_id, file_name, chunk_id, chunk_order, similarity_score_percent
+    - ``file_image``: attached image — file_id, file_name, mime_type, file_size
+    - ``file_unsupported``: non-text / parse failed — file_id, file_name, mime_type, file_size
     """
     if not isinstance(metadatas, dict):
         return metadatas
@@ -113,7 +114,7 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
         source_type = item.get("source_type")
 
         if source_type in ("file_image", "file_unsupported"):
-            norm = _normalize_file_only_citation(item)
+            norm = _normalize_file_only_citation(item, source_type)
             if norm.get("file_id"):
                 normalized.append(norm)
             continue
@@ -142,6 +143,7 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
                 chunk_id: str, chunk_order: Optional[int], sim_pct: Optional[float]
             ) -> Dict[str, Any]:
                 row: Dict[str, Any] = {
+                    "source_type": "file_document",
                     "file_id": fid,
                     "chunk_id": chunk_id,
                     "chunk_order": chunk_order,
@@ -167,6 +169,7 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
             chunk_id: str, chunk_order: Optional[int], sim_pct: Optional[float]
         ) -> Dict[str, Any]:
             row: Dict[str, Any] = {
+                "source_type": "node",
                 "node_id": node_id,
                 "chunk_id": chunk_id,
                 "chunk_order": chunk_order,
