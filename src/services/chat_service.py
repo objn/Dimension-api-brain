@@ -315,6 +315,20 @@ class ChatService:
                             text=text,
                         )
                         document_file_ids_for_rag.append(file_id)
+                        text_stripped = text.strip()
+                        doc_snippet = (
+                            (text_stripped[:300] + "…")
+                            if len(text_stripped) > 300
+                            else text_stripped
+                        )
+                        citations.append(
+                            {
+                                "source_type": "file_document",
+                                "file_id": str(file_entity.file_id),
+                                "file_name": fname,
+                                "snippet": doc_snippet,
+                            }
+                        )
                     except Exception as embed_err:
                         logger.error(
                             "Attach file %s: FileVector embed failed – %s",
@@ -372,10 +386,25 @@ class ChatService:
 
             if not node.node_content_md:
                 logger.warning("Attach node %s (%s): node_content_md is empty, skipping", nid, node.node_name)
+                citations.append(
+                    {
+                        "source_type": "node",
+                        "node_id": str(node.node_id),
+                        "node_name": nname,
+                    }
+                )
                 continue
             ndesc = f" – {node.node_desc}" if node.node_desc else ""
             snippet = (node.node_content_md.strip()[:300] + "…") if len(node.node_content_md.strip()) > 300 else node.node_content_md.strip()
             node_parts.append(f"Node: \"{nname}\"{ndesc}\n{node.node_content_md.strip()}")
+            citations.append(
+                {
+                    "source_type": "node",
+                    "node_id": str(node.node_id),
+                    "node_name": nname,
+                    "snippet": snippet,
+                }
+            )
 
         # ── Attached conversations ──────────────────────────────────────
         for cid in attach_conversations:
@@ -395,7 +424,14 @@ class ChatService:
                 max_messages=MAX_HISTORY,
                 user_id=user_id,
             )
+            topic = convo.conversation_topic or ""
+            conv_citation_base: Dict[str, Any] = {
+                "source_type": "conversation",
+                "conversation_id": str(convo.conversation_id),
+                "conversation_topic": topic,
+            }
             if not history:
+                citations.append(dict(conv_citation_base))
                 continue
 
             lines: List[str] = []
@@ -407,6 +443,7 @@ class ChatService:
                 lines.append(f"{role}: {content}")
 
             if not lines:
+                citations.append(dict(conv_citation_base))
                 continue
 
             convo_text = "\n".join(lines)
@@ -414,6 +451,7 @@ class ChatService:
             title = convo.conversation_topic or str(cid)
 
             convo_parts.append(f"Conversation: \"{title}\"\n{convo_text}")
+            citations.append({**conv_citation_base, "snippet": snippet})
 
         # ── RAG search (similarity) ────────────────────────────────────
         if use_rag:

@@ -93,11 +93,11 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
     Normalize metadatas.citations for API response only.
 
     Polymorphic items (omit unused keys); every item includes ``source_type`` (one of
-    ``node``, ``file``, ``file_document``, ``file_image``):
-    - ``node``: node RAG — node_id, node_name, chunk_id, chunk_order, similarity_score_percent
-    - ``file_document``: document file RAG — file_id, file_name, chunk_id, chunk_order, similarity_score_percent
-    - ``file_image``: attached image — file_id, file_name, mime_type, file_size
-    - ``file``: other attached file (non-image / parse failed) — file_id, file_name, mime_type, file_size
+    ``node``, ``file``, ``file_document``, ``file_image``, ``conversation``):
+    - ``node``: RAG chunk or attached node — optional ``snippet`` when no chunk
+    - ``file_document``: RAG chunk or full attached document — optional ``snippet`` when no chunk
+    - ``file_image`` / ``file``: attached file metadata (no chunk)
+    - ``conversation``: attached conversation — ``conversation_id``, optional ``conversation_topic``, ``snippet``
     """
     if not isinstance(metadatas, dict):
         return metadatas
@@ -126,6 +126,20 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
                 normalized.append(norm)
             continue
 
+        if source_type == "conversation":
+            conv_id = _to_str_uuid(item.get("conversation_id"))
+            if conv_id:
+                row_c: Dict[str, Any] = {
+                    "source_type": "conversation",
+                    "conversation_id": conv_id,
+                }
+                if item.get("conversation_topic") is not None:
+                    row_c["conversation_topic"] = str(item["conversation_topic"])
+                if item.get("snippet") is not None:
+                    row_c["snippet"] = str(item["snippet"])
+                normalized.append(row_c)
+            continue
+
         similarity_score_percent = _similarity_to_percent(
             _first_present(item, ["similarity_score", "similarity"])
         )
@@ -134,6 +148,38 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
             item,
             ["chunk_order", "chunk_index", "node_vector_chunk_order", "chunk_orders"],
         )
+
+        node_obj_early = item.get("node") if isinstance(item.get("node"), dict) else {}
+        node_id_early = _to_str_uuid(item.get("node_id")) or _to_str_uuid(
+            node_obj_early.get("node_id")
+        )
+        node_name_early = item.get("node_name") or node_obj_early.get("node_name")
+
+        if source_type == "node" and node_id_early and chunk_id_raw is None:
+            row_n: Dict[str, Any] = {
+                "source_type": "node",
+                "node_id": node_id_early,
+            }
+            if node_name_early is not None:
+                row_n["node_name"] = str(node_name_early)
+            if item.get("snippet") is not None:
+                row_n["snippet"] = str(item["snippet"])
+            normalized.append(row_n)
+            continue
+
+        fid_early = _to_str_uuid(item.get("file_id"))
+        fname_early = item.get("file_name")
+        if source_type == "file_document" and fid_early and chunk_id_raw is None:
+            row_fd: Dict[str, Any] = {
+                "source_type": "file_document",
+                "file_id": fid_early,
+            }
+            if fname_early is not None:
+                row_fd["file_name"] = str(fname_early)
+            if item.get("snippet") is not None:
+                row_fd["snippet"] = str(item["snippet"])
+            normalized.append(row_fd)
+            continue
 
         if source_type == "file_document" or (
             source_type is None
@@ -166,9 +212,9 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
             continue
 
         # Node RAG (explicit or inferred)
-        node_obj = item.get("node") if isinstance(item.get("node"), dict) else {}
-        node_id = _to_str_uuid(item.get("node_id")) or _to_str_uuid(node_obj.get("node_id"))
-        node_name = item.get("node_name") or node_obj.get("node_name")
+        node_obj = node_obj_early
+        node_id = node_id_early
+        node_name = node_name_early
         if not node_id or chunk_id_raw is None:
             continue
 
