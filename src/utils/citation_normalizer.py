@@ -94,10 +94,10 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
 
     Polymorphic items (omit unused keys); every item includes ``source_type`` (one of
     ``node``, ``file``, ``file_document``, ``file_image``, ``conversation``):
-    - ``node``: RAG chunk or attached node — optional ``snippet`` when no chunk
-    - ``file_document``: RAG chunk or full attached document — optional ``snippet`` when no chunk
+    - ``node``: RAG chunk or attached node (IDs / names only; no text snippet)
+    - ``file_document``: RAG chunk or attached document reference (frontend loads text via FileVector)
     - ``file_image`` / ``file``: attached file metadata (no chunk)
-    - ``conversation``: attached conversation — ``conversation_id``, optional ``conversation_topic``, ``snippet``
+    - ``conversation``: ``conversation_id``, optional ``conversation_topic``
     """
     if not isinstance(metadatas, dict):
         return metadatas
@@ -135,8 +135,6 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
                 }
                 if item.get("conversation_topic") is not None:
                     row_c["conversation_topic"] = str(item["conversation_topic"])
-                if item.get("snippet") is not None:
-                    row_c["snippet"] = str(item["snippet"])
                 normalized.append(row_c)
             continue
 
@@ -162,8 +160,6 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
             }
             if node_name_early is not None:
                 row_n["node_name"] = str(node_name_early)
-            if item.get("snippet") is not None:
-                row_n["snippet"] = str(item["snippet"])
             normalized.append(row_n)
             continue
 
@@ -176,8 +172,6 @@ def normalize_citations_in_metadatas(metadatas: Any) -> Any:
             }
             if fname_early is not None:
                 row_fd["file_name"] = str(fname_early)
-            if item.get("snippet") is not None:
-                row_fd["snippet"] = str(item["snippet"])
             normalized.append(row_fd)
             continue
 

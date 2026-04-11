@@ -170,7 +170,7 @@ class MessageResponse(BaseResponseModel):
                 "metadatas": {
                     "agent_id": "123e4567-e89b-12d3-a456-426614174999",
                     "agent_profile_image": "https://dimension.objnx.com/api/files/public/123e4567-e89b-12d3-a456-426614174998",
-                    "citations": [{"index": 1, "source_type": "node", "snippet": "..."}]
+                    "citations": [{"source_type": "node", "node_id": "...", "node_name": "..."}]
                 },
                 "created_at": "2026-02-01T12:00:00Z",
                 "created_by": "123e4567-e89b-12d3-a456-426614174001",
@@ -386,7 +386,7 @@ class ChatResponse(BaseModel):
                     "message_content": "Machine learning is a subset of AI...",
                     "sender_role": "AGENT",
                     "metadatas": {
-                        "citations": [{"index": 1, "source_type": "file", "snippet": "..."}]
+                        "citations": [{"source_type": "file_document", "file_id": "...", "file_name": "notes.pdf"}]
                     }
                 },
                 "messages_in_context": 5
