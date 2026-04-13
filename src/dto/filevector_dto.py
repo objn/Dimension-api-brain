@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 class FilevectorResponse(BaseModel):
     conversation_id: UUID
     file_id: UUID
+    file_name: Optional[str] = None
     chunk_id: UUID = Field(alias="file_vector_chunk_id")
     chunk_order: Optional[int] = Field(default=None, alias="file_vector_chunk_order")
     file_content_text_chunk: Optional[str] = None

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 class NodevectorResponse(BaseModel):
     node_id: UUID
+    node_name: Optional[str] = None
     chunk_id: UUID = Field(alias="node_vector_chunk_id")
     chunk_order: Optional[int] = Field(default=None, alias="node_vector_chunk_order")
     node_content_md_chunk: Optional[str] = None

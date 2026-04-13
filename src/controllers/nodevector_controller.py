@@ -10,6 +10,7 @@ from uuid import UUID
 from src.database import get_db
 from src.dto.response_dto import success_response
 from src.dto.nodevector_dto import NodevectorResponse
+from src.repositories.node_repository import NodeRepository
 from src.repositories.nodevector_repository import NodevectorRepository
 from src.utils.auth import get_current_user_id
 
@@ -41,6 +42,14 @@ async def get_nodevector_by_id(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to access this nodevector")
 
         result = NodevectorResponse.model_validate(row)
+        try:
+            node_repo = NodeRepository(db)
+            node_entity = node_repo.find_one_by_id(getattr(row, "node_id", None))
+            if node_entity is not None and getattr(node_entity, "node_name", None):
+                result.node_name = str(node_entity.node_name)
+        except Exception:
+            # Best-effort enrichment; keep core chunk response stable.
+            pass
         return success_response(result.model_dump(by_alias=True))
     except HTTPException:
         raise

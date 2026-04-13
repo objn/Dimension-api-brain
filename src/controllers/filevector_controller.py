@@ -10,6 +10,7 @@ from uuid import UUID
 from src.database import get_db
 from src.dto.response_dto import success_response
 from src.dto.filevector_dto import FilevectorResponse
+from src.repositories.file_repository import FileRepository
 from src.repositories.file_vector_repository import FileVectorRepository
 from src.utils.auth import get_current_user_id
 
@@ -49,6 +50,14 @@ async def get_filevector_by_id(
             )
 
         result = FilevectorResponse.model_validate(row)
+        try:
+            file_repo = FileRepository(db)
+            file_entity = file_repo.find_one_by_id(getattr(row, "file_id", None))
+            if file_entity is not None and getattr(file_entity, "file_name", None):
+                result.file_name = str(file_entity.file_name)
+        except Exception:
+            # Best-effort enrichment; keep core chunk response stable.
+            pass
         return success_response(result.model_dump(by_alias=True))
     except HTTPException:
         raise
