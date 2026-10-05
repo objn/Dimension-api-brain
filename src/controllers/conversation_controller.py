@@ -51,6 +51,20 @@ from src.services.chat_service import ChatService
 from src.utils.citation_normalizer import normalize_citations_in_metadatas
 
 import src.services.llm_router as LLM
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Short safe error text for the user; full error stays in server log
+def _friendly_llm_error(e: Exception) -> str:
+    text = str(e)
+    if "429" in text or "RESOURCE_EXHAUSTED" in text:
+        return "AI usage limit reached. Please wait a moment and try again."
+    if "503" in text or "UNAVAILABLE" in text:
+        return "AI service is busy right now. Please try again."
+    return "Could not process the message. Please try again."
+
 
 router = APIRouter(
     prefix="/conversations",
@@ -454,12 +468,14 @@ async def chat_with_agent(
             detail=str(e)
         )
     except Exception as e:
+        logger.exception("Chat failed: %s", e)
+        friendly = _friendly_llm_error(e)
         # Record error as SYSTEM message
         try:
             chat_service = ChatService(db)
             chat_service.record_system_message(
                 conversation_id=request.conversation_id,
-                content=f"Failed to process message: {str(e)}",
+                content=friendly,
                 user_id=current_user_id,
                 is_error=True
             )
@@ -468,7 +484,7 @@ async def chat_with_agent(
         
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat: {str(e)}"
+            detail=friendly
         )
 
 
@@ -500,9 +516,10 @@ async def chat_panel(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
+        logger.exception("Panel chat failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing panel chat: {str(e)}"
+            detail=_friendly_llm_error(e)
         )
 
 
