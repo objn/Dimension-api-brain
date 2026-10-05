@@ -41,8 +41,8 @@ import src.services.llm_router as LLM
 MAX_HISTORY = 10
 # Default number of top chunks by similarity to retrieve when use_rag is true (select k best from node_vector)
 RAG_TOP_K_DEFAULT = 5
-# Lower similarity threshold for chat RAG so more chunks pass and citations are returned (0.7 often filters all)
-RAG_MIN_SIMILARITY_CHAT = 0.3
+# Min similarity for chat RAG; with gemini-embedding-001 off-topic chunks score ~0.55, on-topic ~0.7+
+RAG_MIN_SIMILARITY_CHAT = 0.65
 
 
 class ChatService:
@@ -548,7 +548,15 @@ class ChatService:
                 len(rag_parts),
                 len(file_rag_parts),
             )
-        
+        elif use_rag:
+            # tell the model that auto search found nothing in this workspace
+            reference_context = (
+                "IMPORTANT – Auto search found NO related information in the user's current workspace "
+                "for this question. You MUST first tell the user clearly that this topic was not found "
+                "in their workspace. Only after that, you may add a short general-knowledge answer "
+                "and label it as general knowledge."
+            )
+
         # 4. Generate AGENT response (multimodal when images are attached)
         if attached_images:
             agent_response_content = LLM.chat_with_history_and_images(

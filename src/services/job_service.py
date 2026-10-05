@@ -6,7 +6,7 @@ Architecture v3 - Signal-driven:
     - JobDaemon detects ready jobs and sends a signal to JobService
     - process_ready_jobs() finds, deduplicates, and activates jobs
     - activate_job() atomically claims job (PENDING -> PROCESSING) and submits to thread pool
-    - Deduplication: same (job_type, created_by, job_actived=False) → keep latest, SKIP older
+    - Deduplication: same (job_type, created_by, target node/file, job_actived=False) → keep latest, SKIP older
     - Race condition prevention via DB-level atomic update
     - Returns worker_break_off_time when pool is full
 
@@ -967,7 +967,7 @@ class JobService:
 
     def _deduplicate_pending_jobs(self, ready_job_ids: list) -> list:
         """
-        Deduplicate PENDING jobs with same (job_type, created_by, job_actived=False).
+        Deduplicate PENDING jobs with same (job_type, created_by, target node/file, job_actived=False).
 
         Among duplicate groups, keep only the LATEST job (by created_at DESC)
         and mark older ones as SKIP.
@@ -998,10 +998,21 @@ class JobService:
             if not jobs:
                 return list(ready_job_ids)
 
-            # Group by (job_type, created_by)
+            # Target of each job (node_id / file_id) from its metadata
+            targets: Dict[Any, str] = {}
+            meta_rows = db.query(Metadatas.metadata_of, Metadatas.metadata_json).filter(
+                Metadatas.metadata_of.in_([j.job_id for j in jobs])
+            ).all()
+            for job_id, meta in meta_rows:
+                meta = meta if isinstance(meta, dict) else {}
+                target = meta.get("node_id") or meta.get("file_id")
+                if target:
+                    targets[job_id] = str(target)
+
+            # Group by (job_type, created_by, target); job without target is never deduplicated
             groups: Dict[tuple, list] = {}
             for job in jobs:
-                key = (job.job_type, str(job.created_by))
+                key = (job.job_type, str(job.created_by), targets.get(job.job_id, str(job.job_id)))
                 if key not in groups:
                     groups[key] = []
                 groups[key].append(job)
