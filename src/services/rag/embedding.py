@@ -104,8 +104,10 @@ class EmbeddingService:
                     dimensions=self.dimensions
                 )
                 
-                # Sort by index to maintain order
-                sorted_data = sorted(response.data, key=lambda x: x.index)
+                # Sort by index to maintain order (Gemini returns index=None, already in order)
+                sorted_data = response.data
+                if all(item.index is not None for item in sorted_data):
+                    sorted_data = sorted(sorted_data, key=lambda x: x.index)
                 batch_embeddings = [item.embedding for item in sorted_data]
                 all_embeddings.extend(batch_embeddings)
                 

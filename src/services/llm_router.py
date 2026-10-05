@@ -13,24 +13,29 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _content_to_text(c: Any) -> str:
+    """Turn message content (str or list of blocks, e.g. from Gemini) into plain text."""
+    if not c:
+        return ""
+    if isinstance(c, str):
+        return c
+    parts: List[str] = []
+    if isinstance(c, list):
+        for block in c:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text") or "")
+    return "".join(parts)
+
+
 def _stream_content_to_text(llm: BaseChatModel, messages: List[Any]) -> str:
     """
     Consume LangChain chat model stream (OpenAI SSE under the hood) and concatenate text.
     """
     parts: List[str] = []
     for chunk in llm.stream(messages):
-        c = getattr(chunk, "content", None)
-        if not c:
-            continue
-        if isinstance(c, str):
-            parts.append(c)
-        elif isinstance(c, list):
-            for block in c:
-                if isinstance(block, str):
-                    parts.append(block)
-                elif isinstance(block, dict):
-                    if block.get("type") == "text":
-                        parts.append(block.get("text") or "")
+        parts.append(_content_to_text(getattr(chunk, "content", None)))
     return "".join(parts).strip()
 
 
@@ -133,7 +138,7 @@ def extract_text_from_images_vision(
     llm = _get_llm(provider, timeout=timeout)
     message = HumanMessage(content=content_parts)
     response = llm.invoke([message])
-    return (response.content or "").strip()
+    return _content_to_text(response.content).strip()
 
 
 def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai", max_retries: int = 3) -> str:
@@ -155,7 +160,7 @@ def topic_by_firstmessage(message: str, provider: LLMProviderType = "openai", ma
         ]
         
         response = llm.invoke(messages)
-        topic = response.content.strip()
+        topic = _content_to_text(response.content).strip()
         
         # Check length - if valid, return immediately
         if len(topic) <= 255:
@@ -236,7 +241,7 @@ def chat_with_history(
     if provider == "openai":
         return _stream_content_to_text(llm, messages)
     response = llm.invoke(messages)
-    return (response.content or "").strip()
+    return _content_to_text(response.content).strip()
 
 
 def chat_with_history_and_images(
@@ -339,7 +344,7 @@ def chat_with_history_and_images(
         except Exception as e:
             logger.warning("OpenAI streaming failed for multimodal chat, falling back to invoke: %s", e)
     response = llm.invoke([message])
-    return (response.content or "").strip()
+    return _content_to_text(response.content).strip()
 
 
 def simple_chat(
@@ -367,4 +372,4 @@ def simple_chat(
     messages.append(HumanMessage(content=message))
     
     response = llm.invoke(messages)
-    return response.content.strip()
+    return _content_to_text(response.content).strip()

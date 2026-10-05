@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from src.config.settings import settings
+
 
 class RAGStage(str, Enum):
     """RAG Pipeline stages for job tracking"""
@@ -119,8 +121,8 @@ CHUNK_OVERLAP = 200         # Overlap between chunks for context continuity
 MIN_CHUNK_SIZE = 100        # Minimum chunk size (don't create tiny chunks)
 
 # Embedding configuration
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIMENSIONS = 1536
+EMBEDDING_MODEL = settings.embedding_model
+EMBEDDING_DIMENSIONS = 1536  # must match vector(1536) columns
 EMBEDDING_BATCH_SIZE = 50   # Number of texts per API call
 
 # Search configuration

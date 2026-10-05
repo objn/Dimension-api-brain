@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(
         default="https://api.openai.com/v1", alias="OPENAI_BASE_URL"
     )
+    # Embedding model on the OpenAI-compatible endpoint (e.g. gemini-embedding-001)
+    embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
 
     # Google Gemini Configuration
     gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
